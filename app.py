@@ -189,13 +189,17 @@ class StreamlitBankAnalyzer:
     def __init__(self):
         """Initialize the Streamlit Bank Analyzer."""
         self.category_keywords = {
-            'Groceries': ['walmart', 'kroger', 'trader joe', 'target'],
-            'Entertainment': ['netflix', 'youtube', 'apple music'],
-            'Dining': ['starbucks', 'chick-fil-a'],
-            'Transportation': ['uber', 'lyft', 'shell', 'gas'],
-            'Credit Card / Transfers': ['chase', 'zelle'],
-            'Bills': ['rent', 'insurance', 'electricity', 'internet'],
-            'Income': ['salary', 'deposit'],
+            'Groceries': ['walmart', 'kroger', 'trader joe', 'target', 'safeway', 'whole foods', 'costco', 'sams club', 'publix', 'aldi', 'food lion', 'harris teeter', 'giant', 'stop shop', 'wegmans', 'meijer', 'heb', 'food max', 'supermarket', 'grocery'],
+            'Subscriptions': ['netflix', 'youtube', 'apple music', 'spotify', 'amazon prime', 'disney plus', 'hulu', 'hbo', 'paramount', 'peacock', 'adobe', 'microsoft', 'google one', 'icloud', 'dropbox', 'gym', 'fitness', 'subscription', 'monthly', 'annual', 'prime video'],
+            'Utilities': ['electricity', 'electric', 'gas company', 'water', 'sewer', 'internet', 'cable', 'phone', 'cellular', 'verizon', 'att', 'tmobile', 'sprint', 'comcast', 'xfinity', 'spectrum', 'cox', 'utility', 'power', 'energy'],
+            'Gas & Fuel': ['shell', 'exxon', 'mobil', 'chevron', 'bp', 'texaco', 'citgo', 'sunoco', 'marathon', 'speedway', 'wawa', '7-eleven', 'gas station', 'fuel', 'gasoline', 'petrol'],
+            'Dining Out': ['starbucks', 'mcdonalds', 'burger king', 'subway', 'chipotle', 'panera', 'chick-fil-a', 'taco bell', 'pizza', 'restaurant', 'cafe', 'diner', 'fast food', 'delivery', 'takeout', 'doordash', 'uber eats', 'grubhub'],
+            'Transportation': ['uber', 'lyft', 'taxi', 'bus', 'metro', 'train', 'parking', 'toll', 'car rental', 'maintenance', 'auto repair', 'oil change'],
+            'Healthcare': ['pharmacy', 'cvs', 'walgreens', 'doctor', 'medical', 'dental', 'hospital', 'clinic', 'health', 'prescription', 'copay'],
+            'Insurance': ['insurance', 'policy', 'premium', 'auto insurance', 'health insurance', 'life insurance', 'home insurance'],
+            'Housing': ['rent', 'mortgage', 'hoa', 'property tax', 'home depot', 'lowes', 'maintenance', 'repair'],
+            'Credit Card / Transfers': ['chase', 'zelle', 'venmo', 'paypal', 'credit card', 'payment', 'transfer'],
+            'Income': ['salary', 'deposit', 'payroll', 'wages', 'bonus', 'refund', 'cashback'],
             'Uncategorized': []
         }
     
@@ -861,6 +865,325 @@ class StreamlitBankAnalyzer:
         
         return fig
     
+    def create_recurring_expenses_analysis(self, df):
+        """Create analysis for recurring/repetitive expenses."""
+        # Focus on key recurring categories
+        recurring_categories = ['Subscriptions', 'Utilities', 'Gas & Fuel', 'Groceries', 'Insurance', 'Housing']
+        
+        expenses_df = df[df['Amount'] < 0].copy()
+        expenses_df['Amount'] = expenses_df['Amount'].abs()
+        expenses_df['YearMonth'] = expenses_df['Date'].dt.to_period('M')
+        
+        # Filter for recurring categories
+        recurring_df = expenses_df[expenses_df['Category'].isin(recurring_categories)]
+        
+        if len(recurring_df) == 0:
+            return None
+        
+        # Calculate monthly spending by category
+        monthly_recurring = recurring_df.groupby(['YearMonth', 'Category'])['Amount'].sum().reset_index()
+        monthly_recurring['YearMonth_str'] = monthly_recurring['YearMonth'].astype(str)
+        
+        # Create stacked bar chart
+        fig = go.Figure()
+        
+        colors = {
+            'Subscriptions': '#FF6B6B',
+            'Utilities': '#4ECDC4', 
+            'Gas & Fuel': '#45B7D1',
+            'Groceries': '#96CEB4',
+            'Insurance': '#FFEAA7',
+            'Housing': '#DDA0DD'
+        }
+        
+        for category in recurring_categories:
+            category_data = monthly_recurring[monthly_recurring['Category'] == category]
+            if len(category_data) > 0:
+                fig.add_trace(go.Bar(
+                    x=category_data['YearMonth_str'],
+                    y=category_data['Amount'],
+                    name=f'{category}',
+                    marker_color=colors.get(category, '#95A5A6'),
+                    hovertemplate=(
+                        f"<b>{category}</b><br>" +
+                        "Month: %{x}<br>" +
+                        "Amount: $%{y:,.2f}<br>" +
+                        "<extra></extra>"
+                    )
+                ))
+        
+        # Calculate YTD totals for annotation
+        current_year = df['Date'].dt.year.max()
+        ytd_data = recurring_df[recurring_df['Date'].dt.year == current_year]
+        ytd_totals = ytd_data.groupby('Category')['Amount'].sum().sort_values(ascending=False)
+        
+        fig.update_layout(
+            title={
+                'text': '📅 Monthly Recurring Expenses Tracker',
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {'size': 16}
+            },
+            xaxis_title="Month",
+            yaxis_title="Amount ($)",
+            height=500,
+            template='plotly_white',
+            barmode='stack',
+            hovermode='x unified',
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.3,
+                xanchor="center",
+                x=0.5
+            ),
+            margin=dict(l=60, r=60, t=80, b=140)
+        )
+        
+        # Add YTD summary annotation
+        ytd_text = f"🗓️ {current_year} YTD Totals: " + " | ".join([f"{cat}: ${amt:,.0f}" for cat, amt in ytd_totals.head(3).items()])
+        fig.add_annotation(
+            text=ytd_text,
+            xref="paper", yref="paper",
+            x=0.5, y=-0.35, xanchor="center", yanchor="top",
+            showarrow=False,
+            font=dict(size=9, color="gray"),
+            bgcolor="rgba(255,255,255,0.8)",
+            bordercolor="lightgray",
+            borderwidth=1
+        )
+        
+        return fig
+    
+    def create_ytd_spending_breakdown(self, df):
+        """Create YTD spending breakdown by category."""
+        current_year = df['Date'].dt.year.max()
+        ytd_data = df[(df['Date'].dt.year == current_year) & (df['Amount'] < 0)].copy()
+        ytd_data['Amount'] = ytd_data['Amount'].abs()
+        
+        if len(ytd_data) == 0:
+            return None
+        
+        # Calculate YTD spending by category
+        ytd_spending = ytd_data.groupby('Category')['Amount'].sum().sort_values(ascending=False)
+        total_ytd = ytd_spending.sum()
+        
+        # Create horizontal bar chart
+        fig = go.Figure()
+        
+        fig.add_trace(go.Bar(
+            y=ytd_spending.index,
+            x=ytd_spending.values,
+            orientation='h',
+            marker=dict(
+                color=ytd_spending.values,
+                colorscale='RdYlBu_r',
+                colorbar=dict(title="Amount ($)"),
+                line=dict(color='rgba(50,50,50,0.8)', width=1)
+            ),
+            hovertemplate=(
+                "<b>%{y}</b><br>" +
+                "YTD Spending: $%{x:,.2f}<br>" +
+                "% of Total: %{customdata:.1f}%<br>" +
+                "<extra></extra>"
+            ),
+            customdata=[(amt/total_ytd*100) for amt in ytd_spending.values]
+        ))
+        
+        fig.update_layout(
+            title={
+                'text': f'📊 {current_year} Year-to-Date Spending Breakdown',
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {'size': 16}
+            },
+            xaxis_title="Amount ($)",
+            yaxis_title="Category",
+            height=500,
+            template='plotly_white',
+            showlegend=False,
+            xaxis_tickformat='$,.0f',
+            margin=dict(l=120, r=60, t=80, b=80)
+        )
+        
+        # Add total spending annotation
+        fig.add_annotation(
+            text=f"💰 Total YTD Spending: ${total_ytd:,.2f}",
+            xref="paper", yref="paper",
+            x=1, y=-0.15, xanchor="right", yanchor="top",
+            showarrow=False,
+            font=dict(size=10, color="darkblue", weight="bold"),
+            bgcolor="rgba(255,255,255,0.8)",
+            bordercolor="darkblue",
+            borderwidth=1
+        )
+        
+        return fig
+    
+    def create_expense_optimization_insights(self, df):
+        """Generate detailed expense optimization recommendations."""
+        current_year = df['Date'].dt.year.max()
+        expenses_df = df[df['Amount'] < 0].copy()
+        expenses_df['Amount'] = expenses_df['Amount'].abs()
+        
+        insights = []
+        insights.append("🎯 **Expense Optimization Analysis**")
+        insights.append("")
+        
+        # 1. Identify highest spending categories
+        category_spending = expenses_df.groupby('Category')['Amount'].sum().sort_values(ascending=False)
+        top_3_categories = category_spending.head(3)
+        
+        insights.append("📈 **Top 3 Expense Categories to Target:**")
+        for i, (category, amount) in enumerate(top_3_categories.items(), 1):
+            monthly_avg = amount / len(expenses_df['Date'].dt.to_period('M').unique())
+            insights.append(f"{i}. **{category}**: ${amount:,.2f} YTD (${monthly_avg:,.0f}/month avg)")
+        insights.append("")
+        
+        # 2. Subscription analysis
+        subscription_expenses = expenses_df[expenses_df['Category'] == 'Subscriptions']
+        if len(subscription_expenses) > 0:
+            monthly_subs = subscription_expenses.groupby(subscription_expenses['Date'].dt.to_period('M'))['Amount'].sum()
+            avg_monthly_subs = monthly_subs.mean()
+            insights.append("🔄 **Subscription Analysis:**")
+            insights.append(f"• Average monthly subscriptions: **${avg_monthly_subs:.2f}**")
+            insights.append(f"• Annual projected cost: **${avg_monthly_subs * 12:,.2f}**")
+            
+            # Find individual subscriptions
+            sub_merchants = subscription_expenses.groupby('Description')['Amount'].agg(['sum', 'count']).sort_values('sum', ascending=False)
+            if len(sub_merchants) > 0:
+                insights.append("• Top subscription expenses:")
+                for desc, row in sub_merchants.head(3).iterrows():
+                    insights.append(f"  - {desc}: ${row['sum']:,.2f} ({row['count']} transactions)")
+            insights.append("")
+        
+        # 3. Recurring expense patterns
+        recurring_cats = ['Utilities', 'Gas & Fuel', 'Groceries', 'Insurance']
+        for cat in recurring_cats:
+            cat_data = expenses_df[expenses_df['Category'] == cat]
+            if len(cat_data) > 0:
+                monthly_avg = cat_data.groupby(cat_data['Date'].dt.to_period('M'))['Amount'].sum().mean()
+                total_spent = cat_data['Amount'].sum()
+                insights.append(f"💡 **{cat}**: ${total_spent:,.2f} YTD (${monthly_avg:,.0f}/month avg)")
+        
+        insights.append("")
+        insights.append("🔧 **Optimization Recommendations:**")
+        
+        # 4. Generate specific recommendations
+        if len(subscription_expenses) > 0 and avg_monthly_subs > 50:
+            insights.append(f"• **Review subscriptions**: You're spending ${avg_monthly_subs:.0f}/month. Cancel unused services to save ${avg_monthly_subs * 0.3:.0f}+/month")
+        
+        grocery_spending = expenses_df[expenses_df['Category'] == 'Groceries']['Amount'].sum()
+        if grocery_spending > 0:
+            monthly_grocery = grocery_spending / len(expenses_df['Date'].dt.to_period('M').unique())
+            if monthly_grocery > 400:
+                insights.append(f"• **Grocery optimization**: ${monthly_grocery:.0f}/month is above average. Try meal planning and bulk buying")
+        
+        dining_spending = expenses_df[expenses_df['Category'] == 'Dining Out']['Amount'].sum()
+        if dining_spending > 0:
+            monthly_dining = dining_spending / len(expenses_df['Date'].dt.to_period('M').unique())
+            if monthly_dining > 200:
+                potential_savings = monthly_dining * 0.5
+                insights.append(f"• **Dining out**: ${monthly_dining:.0f}/month. Cooking more could save ${potential_savings:.0f}/month")
+        
+        gas_spending = expenses_df[expenses_df['Category'] == 'Gas & Fuel']['Amount'].sum()
+        if gas_spending > 0:
+            monthly_gas = gas_spending / len(expenses_df['Date'].dt.to_period('M').unique())
+            insights.append(f"• **Fuel efficiency**: Track gas spending patterns to optimize routes and find cheaper stations")
+        
+        # 5. Overall savings potential
+        total_monthly = expenses_df.groupby(expenses_df['Date'].dt.to_period('M'))['Amount'].sum().mean()
+        potential_monthly_savings = (avg_monthly_subs * 0.2 if len(subscription_expenses) > 0 else 0) + \
+                                  (monthly_dining * 0.3 if dining_spending > 0 else 0)
+        
+        if potential_monthly_savings > 50:
+            annual_savings = potential_monthly_savings * 12
+            insights.append("")
+            insights.append(f"💰 **Potential Savings**: ${potential_monthly_savings:.0f}/month = **${annual_savings:,.0f}/year**")
+        
+        return insights
+    
+    def create_recurring_expenses_calendar(self, df):
+        """Create a calendar view of recurring expenses."""
+        recurring_categories = ['Subscriptions', 'Utilities', 'Gas & Fuel', 'Insurance']
+        
+        expenses_df = df[df['Amount'] < 0].copy()
+        expenses_df['Amount'] = expenses_df['Amount'].abs()
+        
+        # Filter for recurring categories
+        recurring_df = expenses_df[expenses_df['Category'].isin(recurring_categories)]
+        
+        if len(recurring_df) == 0:
+            return None
+        
+        # Group by date and category
+        daily_expenses = recurring_df.groupby(['Date', 'Category'])['Amount'].sum().reset_index()
+        
+        # Create scatter plot with dates
+        fig = go.Figure()
+        
+        colors = {
+            'Subscriptions': '#FF6B6B',
+            'Utilities': '#4ECDC4', 
+            'Gas & Fuel': '#45B7D1',
+            'Insurance': '#FFEAA7'
+        }
+        
+        for category in recurring_categories:
+            cat_data = daily_expenses[daily_expenses['Category'] == category]
+            if len(cat_data) > 0:
+                fig.add_trace(go.Scatter(
+                    x=cat_data['Date'],
+                    y=cat_data['Amount'],
+                    mode='markers',
+                    name=category,
+                    marker=dict(
+                        size=cat_data['Amount'] / cat_data['Amount'].max() * 20 + 8,
+                        color=colors.get(category, '#95A5A6'),
+                        opacity=0.7,
+                        line=dict(width=1, color='white')
+                    ),
+                    hovertemplate=(
+                        f"<b>{category}</b><br>" +
+                        "Date: %{x}<br>" +
+                        "Amount: $%{y:,.2f}<br>" +
+                        "<extra></extra>"
+                    )
+                ))
+        
+        fig.update_layout(
+            title={
+                'text': '📅 Recurring Expenses Calendar View',
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {'size': 16}
+            },
+            xaxis_title="Date",
+            yaxis_title="Amount ($)",
+            height=400,
+            template='plotly_white',
+            hovermode='closest',
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.25,
+                xanchor="center",
+                x=0.5
+            ),
+            margin=dict(l=60, r=60, t=80, b=100)
+        )
+        
+        # Add annotation
+        fig.add_annotation(
+            text="💡 Bubble size = expense amount | Identify patterns in recurring payments",
+            xref="paper", yref="paper",
+            x=0.5, y=-0.35, xanchor="center", yanchor="top",
+            showarrow=False,
+            font=dict(size=9, color="gray")
+        )
+        
+        return fig
+    
     def get_insights(self, df, total_income, total_expenses, total_savings, savings_rate):
         """Generate financial insights."""
         insights = []
@@ -1171,6 +1494,50 @@ class StreamlitBankAnalyzer:
                     top_transactions['Date'] = pd.to_datetime(top_transactions['Date']).dt.strftime('%Y-%m-%d')
                     top_transactions = top_transactions[['Date', 'Description', 'Amount', 'Category', 'Type']]
                     top_transactions.to_excel(writer, sheet_name='Top Transactions', index=False)
+                
+                # Sheet 6: Recurring Expenses Analysis
+                recurring_categories = ['Subscriptions', 'Utilities', 'Gas & Fuel', 'Groceries', 'Insurance', 'Housing']
+                expenses_df_recurring = df[df['Amount'] < 0].copy()
+                expenses_df_recurring['Amount'] = expenses_df_recurring['Amount'].abs()
+                recurring_expenses = expenses_df_recurring[expenses_df_recurring['Category'].isin(recurring_categories)]
+                
+                if len(recurring_expenses) > 0:
+                    # Monthly recurring breakdown
+                    recurring_monthly = recurring_expenses.groupby([
+                        recurring_expenses['Date'].dt.to_period('M'), 'Category'
+                    ])['Amount'].sum().reset_index()
+                    recurring_monthly['Month'] = recurring_monthly['Date'].astype(str)
+                    recurring_monthly = recurring_monthly[['Month', 'Category', 'Amount']]
+                    recurring_monthly.to_excel(writer, sheet_name='Recurring Expenses', index=False)
+                
+                # Sheet 7: YTD Summary by Category
+                current_year = df['Date'].dt.year.max()
+                ytd_expenses = df[(df['Date'].dt.year == current_year) & (df['Amount'] < 0)].copy()
+                ytd_expenses['Amount'] = ytd_expenses['Amount'].abs()
+                
+                if len(ytd_expenses) > 0:
+                    ytd_summary = ytd_expenses.groupby('Category').agg({
+                        'Amount': ['sum', 'mean', 'count'],
+                        'Date': ['min', 'max']
+                    }).round(2)
+                    ytd_summary.columns = ['Total_Spent', 'Avg_Transaction', 'Transaction_Count', 'First_Transaction', 'Last_Transaction']
+                    ytd_summary['Monthly_Average'] = (ytd_summary['Total_Spent'] / 
+                                                    len(ytd_expenses['Date'].dt.to_period('M').unique())).round(2)
+                    ytd_summary = ytd_summary.sort_values('Total_Spent', ascending=False)
+                    ytd_summary.to_excel(writer, sheet_name='YTD Summary', index=True)
+                
+                # Sheet 8: Subscription Details
+                subscription_expenses = expenses_df_recurring[expenses_df_recurring['Category'] == 'Subscriptions']
+                if len(subscription_expenses) > 0:
+                    subscription_details = subscription_expenses.groupby('Description').agg({
+                        'Amount': ['sum', 'mean', 'count'],
+                        'Date': ['min', 'max']
+                    }).round(2)
+                    subscription_details.columns = ['Total_Cost', 'Avg_Cost', 'Frequency', 'First_Seen', 'Last_Seen']
+                    subscription_details['Annual_Projection'] = (subscription_details['Total_Cost'] * 
+                                                               (365 / subscription_details['Frequency'])).round(2)
+                    subscription_details = subscription_details.sort_values('Total_Cost', ascending=False)
+                    subscription_details.to_excel(writer, sheet_name='Subscription Details', index=True)
             
             excel_buffer.seek(0)
             return excel_buffer.getvalue()
@@ -1195,7 +1562,14 @@ def main():
     1. **Upload CSV**: Your file should have columns: Date, Description, Amount
     2. **Filter Data**: Use interactive filters below to focus analysis
     3. **Explore Charts**: All visualizations are interactive with zoom/pan
-    4. **Download Reports**: Generate PDF or Excel summaries
+    4. **Analyze Recurring Expenses**: Track subscriptions, utilities, groceries, fuel
+    5. **Download Reports**: Generate PDF or Excel summaries
+    
+    **🔄 Recurring Expenses Analysis:**
+    - 📊 **Monthly Tracking**: Subscriptions, utilities, groceries, gas & fuel
+    - 📈 **YTD Breakdown**: Year-to-date spending by category
+    - 📅 **Calendar View**: Identify patterns in recurring payments
+    - 🎯 **Optimization Tips**: Find ways to reduce unwanted expenses
     
     **Interactive Features:**
     - 🔍 **Date & Category Filters**: Focus on specific time periods or categories
@@ -1204,7 +1578,7 @@ def main():
     
     **Report Options:**
     - 📄 **PDF**: Visual summary with charts
-    - 📊 **Excel**: Detailed data with multiple sheets
+    - 📊 **Excel**: 8 detailed sheets including recurring expense analysis
     
     **CSV Format Example:**
     ```
@@ -1355,13 +1729,49 @@ def main():
                 if timeline_chart:
                     st.plotly_chart(timeline_chart, use_container_width=True)
                 
-                # Insights section
-                st.markdown('<div class="insight-header">💡 Financial Insights & Recommendations</div>', unsafe_allow_html=True)
-                insights = analyzer.get_insights(filtered_df, total_income, total_expenses, total_savings, savings_rate)
+                # Recurring Expenses Analysis Section
+                st.markdown('<div class="chart-header">🔄 Recurring Expenses Analysis</div>', unsafe_allow_html=True)
                 
-                for insight in insights:
-                    if insight:  # Skip empty lines
-                        st.markdown(insight)
+                # Create columns for recurring expense charts
+                recurring_col1, recurring_col2 = st.columns(2)
+                
+                with recurring_col1:
+                    st.subheader("📊 Monthly Recurring Expenses")
+                    recurring_chart = analyzer.create_recurring_expenses_analysis(filtered_df)
+                    if recurring_chart:
+                        st.plotly_chart(recurring_chart, use_container_width=True)
+                
+                with recurring_col2:
+                    st.subheader("📈 YTD Spending Breakdown")
+                    ytd_chart = analyzer.create_ytd_spending_breakdown(filtered_df)
+                    if ytd_chart:
+                        st.plotly_chart(ytd_chart, use_container_width=True)
+                
+                # Recurring expenses calendar (full width)
+                st.subheader("📅 Recurring Expenses Calendar")
+                calendar_chart = analyzer.create_recurring_expenses_calendar(filtered_df)
+                if calendar_chart:
+                    st.plotly_chart(calendar_chart, use_container_width=True)
+                
+                # Enhanced Insights section with optimization
+                st.markdown('<div class="insight-header">💡 Financial Insights & Expense Optimization</div>', unsafe_allow_html=True)
+                
+                # Create columns for different types of insights
+                insight_col1, insight_col2 = st.columns([1, 1])
+                
+                with insight_col1:
+                    st.markdown("#### 📊 General Financial Insights")
+                    general_insights = analyzer.get_insights(filtered_df, total_income, total_expenses, total_savings, savings_rate)
+                    for insight in general_insights:
+                        if insight:  # Skip empty lines
+                            st.markdown(insight)
+                
+                with insight_col2:
+                    st.markdown("#### 🎯 Expense Optimization Recommendations")
+                    optimization_insights = analyzer.create_expense_optimization_insights(filtered_df)
+                    for insight in optimization_insights:
+                        if insight:  # Skip empty lines
+                            st.markdown(insight)
                 
                 # Data preview
                 with st.expander("📋 View Filtered Transaction Data"):
