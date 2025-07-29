@@ -23,6 +23,8 @@ import pytesseract
 import numpy as np
 import cv2
 import base64
+import secrets
+import bcrypt
 
 # Set page configuration
 st.set_page_config(
@@ -227,31 +229,43 @@ class StreamlitBankAnalyzer:
         return 'Uncategorized'
     
     def process_dataframe(self, df):
-        """Process the uploaded DataFrame."""
+        """Process the uploaded DataFrame and combine with manual entries."""
         try:
-            # Validate columns
-            required_columns = ['Date', 'Description', 'Amount']
-            if not all(col in df.columns for col in required_columns):
-                st.error(f"❌ CSV must contain columns: {required_columns}")
-                return None
+            processed_csv = None
             
-            # Convert Date column to datetime
-            df['Date'] = pd.to_datetime(df['Date'])
+            # Process CSV data if provided
+            if df is not None and len(df) > 0:
+                # Validate columns
+                required_columns = ['Date', 'Description', 'Amount']
+                if not all(col in df.columns for col in required_columns):
+                    st.error(f"❌ CSV must contain columns: {required_columns}")
+                    return None
+                
+                # Convert Date column to datetime
+                df['Date'] = pd.to_datetime(df['Date'])
+                
+                # Convert Amount to numeric
+                df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce')
+                
+                # Remove rows with invalid data
+                df = df.dropna()
+                
+                # Add categorization
+                df['Category'] = df['Description'].apply(self.categorize_transaction)
+                
+                # Separate income and expenses
+                df['Type'] = df['Amount'].apply(lambda x: 'Income' if x > 0 else 'Expense')
+                df['Month'] = df['Date'].dt.to_period('M')
+                
+                processed_csv = df
             
-            # Convert Amount to numeric
-            df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce')
+            # Combine with all manual entries
+            combined_df = self.combine_all_transactions(processed_csv)
             
-            # Remove rows with invalid data
-            df = df.dropna()
-            
-            # Add categorization
-            df['Category'] = df['Description'].apply(self.categorize_transaction)
-            
-            # Separate income and expenses
-            df['Type'] = df['Amount'].apply(lambda x: 'Income' if x > 0 else 'Expense')
-            df['Month'] = df['Date'].dt.to_period('M')
-            
-            return df
+            if len(combined_df) > 0:
+                return combined_df
+            else:
+                return processed_csv
             
         except Exception as e:
             st.error(f"❌ Error processing data: {e}")
@@ -1526,6 +1540,233 @@ class StreamlitBankAnalyzer:
         
         return subscriptions
     
+    def load_manual_expenses(self):
+        """Load manually entered expenses from session state."""
+        if 'manual_expenses' not in st.session_state:
+            st.session_state.manual_expenses = []
+        return st.session_state.manual_expenses
+    
+    def save_manual_expenses(self, expenses):
+        """Save manually entered expenses to session state."""
+        st.session_state.manual_expenses = expenses
+    
+    def get_expense_categories(self):
+        """Get list of expense categories for dropdown."""
+        return [
+            'Groceries', 'Dining Out', 'Gas & Fuel', 'Utilities', 'Subscriptions',
+            'Insurance', 'Healthcare', 'Transportation', 'Shopping', 'Entertainment',
+            'Housing', 'Education', 'Personal Care', 'Gifts & Donations',
+            'Travel', 'Automotive', 'Pet Care', 'Home Improvement', 'Other'
+        ]
+    
+    def manage_manual_expenses(self):
+        """Interface to manually enter expenses."""
+        st.markdown("### ✏️ Manual Expense Entry")
+        st.markdown("**Quickly add expenses on-the-go with automatic categorization**")
+        
+        # Quick expense entry form
+        with st.form("quick_expense_entry", clear_on_submit=True):
+            col1, col2, col3 = st.columns([2, 1, 1])
+            
+            with col1:
+                expense_description = st.text_input(
+                    "Description*",
+                    placeholder="Coffee at Starbucks, Gas fill-up, Grocery shopping...",
+                    help="Brief description of the expense"
+                )
+            
+            with col2:
+                expense_category = st.selectbox(
+                    "Category*",
+                    options=self.get_expense_categories(),
+                    help="Select the expense category"
+                )
+            
+            with col3:
+                expense_amount = st.number_input(
+                    "Amount*",
+                    min_value=0.01,
+                    value=10.00,
+                    step=0.01,
+                    help="Expense amount in dollars"
+                )
+            
+            col4, col5 = st.columns(2)
+            
+            with col4:
+                expense_date = st.date_input(
+                    "Date",
+                    value=datetime.now().date(),
+                    help="Date of the expense"
+                )
+            
+            with col5:
+                expense_type = st.selectbox(
+                    "Type",
+                    options=['Expense', 'Income'],
+                    index=0,
+                    help="Type of transaction"
+                )
+            
+            # Optional notes
+            expense_notes = st.text_area(
+                "Notes (Optional)",
+                placeholder="Additional details about this expense...",
+                help="Optional notes for your reference"
+            )
+            
+            submitted = st.form_submit_button("➕ Add Expense", type="primary")
+            
+            if submitted:
+                if expense_description and expense_amount > 0:
+                    # Create new expense entry
+                    amount = expense_amount if expense_type == 'Income' else -expense_amount
+                    
+                    new_expense = {
+                        'id': f"manual_{datetime.now().timestamp()}",
+                        'Date': expense_date,
+                        'Description': expense_description,
+                        'Amount': amount,
+                        'Category': expense_category,
+                        'Type': expense_type,
+                        'Notes': expense_notes,
+                        'Source': 'Manual Entry',
+                        'Created_At': datetime.now()
+                    }
+                    
+                    # Save to storage
+                    existing_expenses = self.load_manual_expenses()
+                    existing_expenses.append(new_expense)
+                    self.save_manual_expenses(existing_expenses)
+                    
+                    st.success(f"✅ Added {expense_type.lower()}: ${expense_amount:.2f} for {expense_description}")
+                    st.rerun()
+                else:
+                    st.error("❌ Please fill in Description and Amount")
+        
+        # Display recent manual expenses
+        manual_expenses = self.load_manual_expenses()
+        
+        if manual_expenses:
+            st.markdown("### 📋 Recent Manual Entries")
+            
+            # Convert to DataFrame for display
+            df = pd.DataFrame(manual_expenses)
+            df['Date'] = pd.to_datetime(df['Date'])
+            
+            # Sort by date (most recent first)
+            df = df.sort_values('Date', ascending=False)
+            
+            # Display recent entries (last 10)
+            recent_df = df.head(10).copy()
+            recent_df['Date'] = recent_df['Date'].dt.strftime('%Y-%m-%d')
+            recent_df['Amount'] = recent_df['Amount'].apply(lambda x: f"${abs(x):.2f}")
+            
+            display_columns = ['Date', 'Description', 'Category', 'Type', 'Amount']
+            display_df = recent_df[display_columns]
+            
+            st.dataframe(
+                display_df,
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            # Summary metrics
+            st.markdown("#### 📊 Manual Entry Summary")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            total_expenses = df[df['Amount'] < 0]['Amount'].sum()
+            total_income = df[df['Amount'] > 0]['Amount'].sum()
+            total_entries = len(df)
+            this_month = df[df['Date'].dt.month == datetime.now().month]
+            this_month_total = this_month['Amount'].sum()
+            
+            with col1:
+                st.metric("💸 Total Expenses", f"${abs(total_expenses):,.2f}")
+            
+            with col2:
+                st.metric("💰 Total Income", f"${total_income:,.2f}")
+            
+            with col3:
+                st.metric("📝 Total Entries", f"{total_entries:,}")
+            
+            with col4:
+                st.metric("📅 This Month", f"${this_month_total:,.2f}")
+            
+            # Management options
+            st.markdown("---")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("📊 View All Entries", help="See all manual expense entries"):
+                    with st.expander("All Manual Entries", expanded=True):
+                        full_df = df.copy()
+                        full_df['Date'] = full_df['Date'].dt.strftime('%Y-%m-%d')
+                        full_df['Amount'] = full_df['Amount'].apply(lambda x: f"${x:.2f}")
+                        
+                        st.dataframe(
+                            full_df[['Date', 'Description', 'Category', 'Type', 'Amount', 'Notes']],
+                            use_container_width=True,
+                            hide_index=True
+                        )
+            
+            with col2:
+                if st.button("🗑️ Clear All Manual Entries", type="secondary"):
+                    if st.button("⚠️ Confirm Delete All Manual Entries"):
+                        st.session_state.manual_expenses = []
+                        st.success("✅ All manual entries cleared!")
+                        st.rerun()
+        
+        else:
+            st.info("📝 No manual expenses added yet. Use the form above to add your first expense.")
+    
+    def combine_all_transactions(self, csv_df):
+        """Combine CSV data with manual expenses and grocery items for comprehensive analysis."""
+        all_transactions = []
+        
+        # Add CSV transactions
+        if csv_df is not None and len(csv_df) > 0:
+            csv_transactions = csv_df.copy()
+            csv_transactions['Source'] = 'CSV Upload'
+            all_transactions.append(csv_transactions)
+        
+        # Add manual expenses
+        manual_expenses = self.load_manual_expenses()
+        if manual_expenses:
+            manual_df = pd.DataFrame(manual_expenses)
+            manual_df['Date'] = pd.to_datetime(manual_df['Date'])
+            manual_df['Month'] = manual_df['Date'].dt.to_period('M')
+            manual_df['Source'] = 'Manual Entry'
+            
+            # Select only the columns we need to match CSV format
+            manual_df = manual_df[['Date', 'Description', 'Amount', 'Category', 'Type', 'Month', 'Source']]
+            all_transactions.append(manual_df)
+        
+        # Add grocery items as transactions
+        grocery_items = self.load_grocery_items()
+        if grocery_items:
+            grocery_df = pd.DataFrame(grocery_items)
+            grocery_df['Date'] = pd.to_datetime(grocery_df['date'])
+            grocery_df['Description'] = grocery_df['item_name'] + ' @ ' + grocery_df['store']
+            grocery_df['Amount'] = -grocery_df['price']  # Groceries are expenses
+            grocery_df['Category'] = 'Groceries - ' + grocery_df['category']  # Subcategorize
+            grocery_df['Type'] = 'Expense'
+            grocery_df['Month'] = grocery_df['Date'].dt.to_period('M')
+            grocery_df['Source'] = 'Grocery Receipt'
+            
+            # Select only the columns we need
+            grocery_df = grocery_df[['Date', 'Description', 'Amount', 'Category', 'Type', 'Month', 'Source']]
+            all_transactions.append(grocery_df)
+        
+        # Combine all dataframes
+        if all_transactions:
+            combined_df = pd.concat(all_transactions, ignore_index=True)
+            combined_df = combined_df.sort_values('Date', ascending=False)
+            return combined_df
+        else:
+            return pd.DataFrame()
+    
     def load_grocery_items(self):
         """Load grocery items from session state."""
         if 'grocery_items' not in st.session_state:
@@ -2199,6 +2440,167 @@ class StreamlitBankAnalyzer:
         
         return upcoming_payments
     
+    def initialize_users(self):
+        """Initialize default users if not exists."""
+        if 'users' not in st.session_state:
+            # Create default admin user
+            admin_password = bcrypt.hashpw("admin123".encode('utf-8'), bcrypt.gensalt())
+            st.session_state.users = {
+                'admin': {
+                    'password_hash': admin_password,
+                    'role': 'admin',
+                    'created_at': datetime.now(),
+                    'permissions': ['read', 'write', 'admin']
+                }
+            }
+    
+    def authenticate_user(self, username, password):
+        """Authenticate user credentials."""
+        if 'users' not in st.session_state:
+            self.initialize_users()
+        
+        users = st.session_state.users
+        if username in users:
+            stored_hash = users[username]['password_hash']
+            if bcrypt.checkpw(password.encode('utf-8'), stored_hash):
+                return True
+        return False
+    
+    def create_user(self, username, password, role='user', permissions=None):
+        """Create a new user."""
+        if 'users' not in st.session_state:
+            self.initialize_users()
+        
+        if permissions is None:
+            permissions = ['read', 'write']
+        
+        password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+        
+        st.session_state.users[username] = {
+            'password_hash': password_hash,
+            'role': role,
+            'created_at': datetime.now(),
+            'permissions': permissions
+        }
+        
+        return True
+    
+    def login_interface(self):
+        """Display login interface."""
+        st.markdown("### 🔐 Login Required")
+        st.markdown("**Please enter your credentials to access the Finance Analyzer**")
+        
+        # Check if already logged in
+        if 'authenticated' in st.session_state and st.session_state.authenticated:
+            return True
+        
+        with st.form("login_form"):
+            username = st.text_input("👤 Username", placeholder="Enter your username")
+            password = st.text_input("🔒 Password", type="password", placeholder="Enter your password")
+            
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                login_button = st.form_submit_button("🔓 Login", type="primary")
+            
+            if login_button:
+                if self.authenticate_user(username, password):
+                    st.session_state.authenticated = True
+                    st.session_state.current_user = username
+                    st.session_state.user_role = st.session_state.users[username]['role']
+                    st.session_state.user_permissions = st.session_state.users[username]['permissions']
+                    st.success(f"✅ Welcome back, {username}!")
+                    st.rerun()
+                else:
+                    st.error("❌ Invalid username or password")
+        
+        # Default credentials info
+        with st.expander("📋 Default Credentials", expanded=False):
+            st.markdown("""
+            **Default Admin Credentials:**
+            - Username: `admin`
+            - Password: `admin123`
+            
+            **⚠️ Important Security Notes:**
+            - Change the default password after first login
+            - Create additional users with limited permissions
+            - Keep your credentials secure
+            """)
+        
+        return False
+    
+    def user_management_interface(self):
+        """Interface for managing users (admin only)."""
+        if not ('user_permissions' in st.session_state and 'admin' in st.session_state.user_permissions):
+            st.error("❌ Access denied. Admin privileges required.")
+            return
+        
+        st.markdown("### 👥 User Management")
+        
+        # Create new user
+        with st.expander("➕ Create New User"):
+            with st.form("create_user"):
+                new_username = st.text_input("Username*", placeholder="Enter new username")
+                new_password = st.text_input("Password*", type="password", placeholder="Enter password")
+                new_role = st.selectbox("Role", options=['user', 'admin'], index=0)
+                
+                permissions = st.multiselect(
+                    "Permissions",
+                    options=['read', 'write', 'admin'],
+                    default=['read', 'write'],
+                    help="Select user permissions"
+                )
+                
+                if st.form_submit_button("👤 Create User"):
+                    if new_username and new_password:
+                        if new_username not in st.session_state.users:
+                            self.create_user(new_username, new_password, new_role, permissions)
+                            st.success(f"✅ User '{new_username}' created successfully!")
+                            st.rerun()
+                        else:
+                            st.error("❌ Username already exists!")
+                    else:
+                        st.error("❌ Please fill in all required fields")
+        
+        # Display existing users
+        st.markdown("#### 📋 Existing Users")
+        
+        users = st.session_state.users
+        user_data = []
+        
+        for username, user_info in users.items():
+            user_data.append({
+                'Username': username,
+                'Role': user_info['role'],
+                'Permissions': ', '.join(user_info['permissions']),
+                'Created': user_info['created_at'].strftime('%Y-%m-%d')
+            })
+        
+        if user_data:
+            df = pd.DataFrame(user_data)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        
+        # Delete user
+        with st.expander("🗑️ Delete User"):
+            user_to_delete = st.selectbox(
+                "Select user to delete",
+                options=[u for u in users.keys() if u != 'admin'],
+                help="Cannot delete admin user"
+            )
+            
+            if st.button("🗑️ Delete User", type="secondary"):
+                if user_to_delete and user_to_delete != 'admin':
+                    del st.session_state.users[user_to_delete]
+                    st.success(f"✅ User '{user_to_delete}' deleted!")
+                    st.rerun()
+    
+    def logout(self):
+        """Logout current user."""
+        if st.sidebar.button("🚪 Logout"):
+            for key in ['authenticated', 'current_user', 'user_role', 'user_permissions']:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.rerun()
+    
     def create_notification_dashboard(self, sms_config):
         """Create a dashboard showing upcoming payments and notification status for manual subscriptions."""
         st.markdown("### 📱 SMS Notification Dashboard")
@@ -2705,12 +3107,30 @@ class StreamlitBankAnalyzer:
 def main():
     """Main Streamlit application."""
     
+    # Initialize analyzer
+    analyzer = StreamlitBankAnalyzer()
+    
+    # Initialize user system
+    analyzer.initialize_users()
+    
+    # Authentication check
+    if not analyzer.login_interface():
+        st.stop()
+    
+    # Show user info in sidebar
+    if 'current_user' in st.session_state:
+        st.sidebar.markdown(f"👤 **Logged in as:** {st.session_state.current_user}")
+        st.sidebar.markdown(f"🔑 **Role:** {st.session_state.user_role}")
+        analyzer.logout()
+        
+        # Admin user management
+        if 'admin' in st.session_state.user_permissions:
+            with st.sidebar.expander("👥 User Management"):
+                analyzer.user_management_interface()
+    
     # Styled Header
     st.markdown('<h1 class="main-header">💰 Bank Statement Analyzer</h1>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">📊 Upload your bank statement CSV and get comprehensive financial insights!</div>', unsafe_allow_html=True)
-    
-    # Initialize analyzer
-    analyzer = StreamlitBankAnalyzer()
     
     # Sidebar
     st.sidebar.header("📋 Instructions")
@@ -2772,18 +3192,25 @@ def main():
         help="Upload your bank statement CSV file with Date, Description, and Amount columns"
     )
     
-    if uploaded_file is not None:
-        try:
+    # Always process data (CSV + manual entries)
+    try:
+        df = None
+        if uploaded_file is not None:
             # Read the CSV file
             df = pd.read_csv(uploaded_file)
-            
-            # Display basic info
             st.success(f"✅ File uploaded successfully! Found {len(df)} transactions.")
-            
-            # Process the data
-            processed_df = analyzer.process_dataframe(df)
-            
-            if processed_df is not None:
+        
+        # Process the data (includes manual entries even without CSV)
+        processed_df = analyzer.process_dataframe(df)
+        
+        # Show data source summary
+        if processed_df is not None and len(processed_df) > 0:
+            sources = processed_df['Source'].value_counts()
+            source_info = " | ".join([f"{source}: {count}" for source, count in sources.items()])
+            st.info(f"📊 **Data Sources:** {source_info}")
+        
+        # Continue with analysis even if no CSV (manual entries only)
+        if processed_df is not None and len(processed_df) > 0:
                 # Add date range filter in sidebar
                 st.sidebar.markdown("---")
                 st.sidebar.header("🔍 Interactive Filters")
@@ -2988,11 +3415,16 @@ def main():
                                 )
                                 st.success("✅ Excel report generated successfully!")
         
-        except Exception as e:
-            st.error(f"❌ Error reading file: {e}")
-            st.info("Please ensure your CSV file has the correct format with Date, Description, and Amount columns.")
+    except Exception as e:
+        st.error(f"❌ Error reading file: {e}")
+        st.info("Please ensure your CSV file has the correct format with Date, Description, and Amount columns.")
     
-    else:
+    # Manual Expense Entry (always available)
+    st.markdown('<div class="chart-header">✏️ Quick Expense Entry</div>', unsafe_allow_html=True)
+    analyzer.manage_manual_expenses()
+    
+    # Show welcome message if no data
+    if uploaded_file is None and len(analyzer.load_manual_expenses()) == 0 and len(analyzer.load_grocery_items()) == 0:
         # Show sample data format
         st.info("👆 Upload a CSV file to get started!")
         
