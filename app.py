@@ -21,6 +21,8 @@ import re
 import base64
 import secrets
 import bcrypt
+import os
+from pathlib import Path
 
 # Optional imports for OCR functionality
 try:
@@ -219,6 +221,8 @@ st.markdown("""
 class StreamlitBankAnalyzer:
     def __init__(self):
         """Initialize the Streamlit Bank Analyzer."""
+        self.data_dir = Path("user_data")
+        self.init_data_storage()
         self.category_keywords = {
             'Groceries': ['walmart', 'kroger', 'trader joe', 'target', 'safeway', 'whole foods', 'costco', 'sams club', 'publix', 'aldi', 'food lion', 'harris teeter', 'giant', 'stop shop', 'wegmans', 'meijer', 'heb', 'food max', 'supermarket', 'grocery'],
             'Subscriptions': ['netflix', 'youtube', 'apple music', 'spotify', 'amazon prime', 'disney plus', 'hulu', 'hbo', 'paramount', 'peacock', 'adobe', 'microsoft', 'google one', 'icloud', 'dropbox', 'gym', 'fitness', 'subscription', 'monthly', 'annual', 'prime video'],
@@ -246,6 +250,190 @@ class StreamlitBankAnalyzer:
                     return category
         
         return 'Uncategorized'
+    
+    def init_data_storage(self):
+        """Initialize data storage directory and load settings."""
+        # Create data directory if it doesn't exist
+        self.data_dir.mkdir(exist_ok=True)
+        
+        # Load persistence settings
+        if 'persistence_enabled' not in st.session_state:
+            settings = self.load_settings()
+            st.session_state.persistence_enabled = settings.get('persistence_enabled', False)
+            st.session_state.first_time_user = settings.get('first_time_user', True)
+    
+    def get_persistence_enabled(self):
+        """Check if data persistence is enabled."""
+        return st.session_state.get('persistence_enabled', False)
+    
+    def load_settings(self):
+        """Load app settings from file."""
+        settings_file = self.data_dir / "settings.json"
+        if settings_file.exists():
+            try:
+                with open(settings_file, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                st.error(f"Error loading settings: {e}")
+                return {}
+        return {}
+    
+    def save_settings(self, settings):
+        """Save app settings to file."""
+        settings_file = self.data_dir / "settings.json"
+        try:
+            with open(settings_file, 'w') as f:
+                json.dump(settings, f, indent=2, default=str)
+        except Exception as e:
+            st.error(f"Error saving settings: {e}")
+    
+    def save_to_file(self, filename, data):
+        """Save data to JSON file."""
+        if not self.get_persistence_enabled():
+            return
+        
+        filepath = self.data_dir / filename
+        try:
+            with open(filepath, 'w') as f:
+                json.dump(data, f, indent=2, default=str)
+        except Exception as e:
+            st.error(f"Error saving {filename}: {e}")
+    
+    def load_from_file(self, filename, default=None):
+        """Load data from JSON file."""
+        if not self.get_persistence_enabled():
+            return default if default is not None else []
+        
+        filepath = self.data_dir / filename
+        if filepath.exists():
+            try:
+                with open(filepath, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                st.error(f"Error loading {filename}: {e}")
+                return default if default is not None else []
+        return default if default is not None else []
+    
+    def setup_persistence_settings(self):
+        """Setup persistence settings in sidebar."""
+        st.sidebar.markdown("---")
+        st.sidebar.header("💾 Data Persistence")
+        
+        # Show first-time user message
+        if st.session_state.get('first_time_user', True):
+            st.sidebar.info("🆕 **First time?** Enable data persistence below to save your entries permanently!")
+        
+        # Persistence toggle
+        current_enabled = st.session_state.get('persistence_enabled', False)
+        persistence_enabled = st.sidebar.checkbox(
+            "💾 Save data permanently",
+            value=current_enabled,
+            help="When enabled, your expenses, subscriptions, and grocery items will be saved to disk and persist between app restarts."
+        )
+        
+        # Update settings if changed
+        if persistence_enabled != current_enabled:
+            st.session_state.persistence_enabled = persistence_enabled
+            
+            # Save settings
+            settings = self.load_settings()
+            settings['persistence_enabled'] = persistence_enabled
+            settings['first_time_user'] = False
+            self.save_settings(settings)
+            
+            if persistence_enabled:
+                # Load existing data from files
+                self.load_all_data_from_files()
+                st.sidebar.success("✅ Data persistence enabled! Your data will now be saved.")
+            else:
+                st.sidebar.warning("⚠️ Data persistence disabled. Your data will only last for this session.")
+            
+            st.rerun()
+        
+        # Show data status
+        if persistence_enabled:
+            data_count = (
+                len(st.session_state.get('manual_expenses', [])) +
+                len(st.session_state.get('manual_subscriptions', [])) +
+                len(st.session_state.get('grocery_items', []))
+            )
+            
+            st.sidebar.success(f"💾 **Persistent Storage Active**\n📊 {data_count} items saved")
+            
+            # Data management options
+            with st.sidebar.expander("🗂️ Data Management"):
+                if st.button("🔄 Reload Data from Files"):
+                    self.load_all_data_from_files()
+                    st.success("Data reloaded!")
+                    st.rerun()
+                
+                if st.button("💾 Save Current Data"):
+                    self.save_all_data_to_files()
+                    st.success("Data saved!")
+                
+                if st.button("🗑️ Clear All Saved Data", type="secondary"):
+                    if st.button("⚠️ Confirm Delete All Saved Data"):
+                        self.clear_all_saved_data()
+                        st.success("All saved data cleared!")
+                        st.rerun()
+        else:
+            st.sidebar.info("📝 **Session Storage Only**\nData will be lost when you restart the app.")
+    
+    def load_all_data_from_files(self):
+        """Load all data from persistent files into session state."""
+        if not self.get_persistence_enabled():
+            return
+        
+        # Load manual expenses
+        expenses = self.load_from_file("manual_expenses.json", [])
+        if expenses:
+            st.session_state.manual_expenses = expenses
+        
+        # Load subscriptions
+        subscriptions = self.load_from_file("manual_subscriptions.json", [])
+        if subscriptions:
+            st.session_state.manual_subscriptions = subscriptions
+        
+        # Load grocery items
+        grocery_items = self.load_from_file("grocery_items.json", [])
+        if grocery_items:
+            st.session_state.grocery_items = grocery_items
+    
+    def save_all_data_to_files(self):
+        """Save all current session data to persistent files."""
+        if not self.get_persistence_enabled():
+            return
+        
+        # Save manual expenses
+        manual_expenses = st.session_state.get('manual_expenses', [])
+        if manual_expenses:
+            self.save_to_file("manual_expenses.json", manual_expenses)
+        
+        # Save subscriptions
+        subscriptions = st.session_state.get('manual_subscriptions', [])
+        if subscriptions:
+            self.save_to_file("manual_subscriptions.json", subscriptions)
+        
+        # Save grocery items
+        grocery_items = st.session_state.get('grocery_items', [])
+        if grocery_items:
+            self.save_to_file("grocery_items.json", grocery_items)
+    
+    def clear_all_saved_data(self):
+        """Clear all saved data files and session state."""
+        # Clear session state
+        for key in ['manual_expenses', 'manual_subscriptions', 'grocery_items']:
+            if key in st.session_state:
+                st.session_state[key] = []
+        
+        # Clear files
+        for filename in ["manual_expenses.json", "manual_subscriptions.json", "grocery_items.json"]:
+            filepath = self.data_dir / filename
+            if filepath.exists():
+                try:
+                    filepath.unlink()
+                except Exception as e:
+                    st.error(f"Error deleting {filename}: {e}")
     
     def process_dataframe(self, df):
         """Process the uploaded DataFrame and combine with manual entries."""
@@ -1327,14 +1515,18 @@ class StreamlitBankAnalyzer:
         return schedule_display
     
     def load_manual_subscriptions(self):
-        """Load manually entered subscriptions from session state."""
+        """Load manually entered subscriptions from session state or file."""
         if 'manual_subscriptions' not in st.session_state:
-            st.session_state.manual_subscriptions = []
+            # Try to load from file first
+            subscriptions = self.load_from_file("manual_subscriptions.json", [])
+            st.session_state.manual_subscriptions = subscriptions
         return st.session_state.manual_subscriptions
     
     def save_manual_subscriptions(self, subscriptions):
-        """Save manually entered subscriptions to session state."""
+        """Save manually entered subscriptions to session state and file."""
         st.session_state.manual_subscriptions = subscriptions
+        # Auto-save to file if persistence is enabled
+        self.save_to_file("manual_subscriptions.json", subscriptions)
     
     def calculate_next_due_date(self, last_due_date, due_day_of_month):
         """Calculate the next due date based on the monthly cycle."""
@@ -1560,14 +1752,18 @@ class StreamlitBankAnalyzer:
         return subscriptions
     
     def load_manual_expenses(self):
-        """Load manually entered expenses from session state."""
+        """Load manually entered expenses from session state or file."""
         if 'manual_expenses' not in st.session_state:
-            st.session_state.manual_expenses = []
+            # Try to load from file first
+            expenses = self.load_from_file("manual_expenses.json", [])
+            st.session_state.manual_expenses = expenses
         return st.session_state.manual_expenses
     
     def save_manual_expenses(self, expenses):
-        """Save manually entered expenses to session state."""
+        """Save manually entered expenses to session state and file."""
         st.session_state.manual_expenses = expenses
+        # Auto-save to file if persistence is enabled
+        self.save_to_file("manual_expenses.json", expenses)
     
     def get_expense_categories(self):
         """Get list of expense categories for dropdown."""
@@ -1787,14 +1983,18 @@ class StreamlitBankAnalyzer:
             return pd.DataFrame()
     
     def load_grocery_items(self):
-        """Load grocery items from session state."""
+        """Load grocery items from session state or file."""
         if 'grocery_items' not in st.session_state:
-            st.session_state.grocery_items = []
+            # Try to load from file first
+            items = self.load_from_file("grocery_items.json", [])
+            st.session_state.grocery_items = items
         return st.session_state.grocery_items
     
     def save_grocery_items(self, items):
-        """Save grocery items to session state."""
+        """Save grocery items to session state and file."""
         st.session_state.grocery_items = items
+        # Auto-save to file if persistence is enabled
+        self.save_to_file("grocery_items.json", items)
     
     def categorize_grocery_item(self, item_name):
         """Categorize grocery items into specific categories."""
@@ -3152,6 +3352,9 @@ def main():
         if 'admin' in st.session_state.user_permissions:
             with st.sidebar.expander("👥 User Management"):
                 analyzer.user_management_interface()
+        
+        # Data persistence settings
+        analyzer.setup_persistence_settings()
     
     # Styled Header
     st.markdown('<h1 class="main-header">💰 Bank Statement Analyzer</h1>', unsafe_allow_html=True)
@@ -3168,12 +3371,13 @@ def main():
     # Sidebar
     st.sidebar.header("📋 Instructions")
     st.sidebar.markdown("""
-    1. **Quick Entry**: Add expenses instantly at the top of the page
-    2. **Upload CSV**: Import bank statement data (optional)
-    3. **View Overview**: See your financial metrics and charts
-    4. **Get Insights**: Review personalized financial recommendations
-    5. **Manage Items**: Use tabs for subscriptions, groceries, and SMS alerts
-    6. **Export Reports**: Generate PDF/Excel reports in the Reports tab
+    1. **Enable Persistence**: Turn on data saving below (recommended for real use)
+    2. **Quick Entry**: Add expenses instantly at the top of the page
+    3. **Upload CSV**: Import bank statement data (optional)
+    4. **View Overview**: See your financial metrics and charts
+    5. **Get Insights**: Review personalized financial recommendations
+    6. **Manage Items**: Use tabs for subscriptions, groceries, and SMS alerts
+    7. **Export Reports**: Generate PDF/Excel reports in the Reports tab
     
     **⚡ Quick Expense Entry (Top Priority):**
     - ✏️ **Instant Access**: Add expenses immediately at the top
