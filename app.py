@@ -509,6 +509,69 @@ class StreamlitBankAnalyzer:
         
         return total_income, total_expenses, total_savings, savings_rate
     
+    def calculate_monthly_disposable_income(self, df):
+        """Calculate monthly disposable income after subscriptions and fixed payments."""
+        from datetime import datetime, timedelta
+        import calendar
+        
+        # Get current month's data
+        today = datetime.now()
+        current_month = today.month
+        current_year = today.year
+        
+        # Filter for current month if we have date data
+        if not df.empty and 'Date' in df.columns:
+            df_current_month = df[
+                (df['Date'].dt.month == current_month) & 
+                (df['Date'].dt.year == current_year)
+            ]
+            # Calculate monthly income from current month
+            monthly_income = df_current_month[df_current_month['Amount'] > 0]['Amount'].sum()
+            
+            # Identify recurring/fixed expenses from transaction data
+            recurring_categories = ['Bills', 'Insurance', 'Utilities', 'Rent', 'Mortgage']
+            recurring_expenses = abs(df_current_month[
+                df_current_month['Category'].isin(recurring_categories)
+            ]['Amount'].sum())
+        else:
+            # If no transaction data, estimate from overall data
+            monthly_income = df[df['Amount'] > 0]['Amount'].sum() if not df.empty else 0
+            recurring_expenses = 0
+        
+        # Get monthly subscription costs
+        subscriptions = self.load_manual_subscriptions()
+        monthly_subscription_cost = sum(sub['amount'] for sub in subscriptions)
+        
+        # Calculate total fixed costs
+        total_fixed_costs = monthly_subscription_cost + recurring_expenses
+        
+        # Calculate disposable income
+        disposable_income = monthly_income - total_fixed_costs
+        
+        # Get days remaining in month for daily spending calculation
+        days_in_month = calendar.monthrange(current_year, current_month)[1]
+        days_remaining = days_in_month - today.day + 1
+        
+        # Calculate daily spending allowance
+        daily_allowance = disposable_income / days_remaining if days_remaining > 0 else 0
+        
+        # Calculate weekly allowance
+        weeks_remaining = days_remaining / 7
+        weekly_allowance = disposable_income / weeks_remaining if weeks_remaining > 0 else 0
+        
+        return {
+            'monthly_income': monthly_income,
+            'subscription_costs': monthly_subscription_cost,
+            'recurring_expenses': recurring_expenses,
+            'total_fixed_costs': total_fixed_costs,
+            'disposable_income': disposable_income,
+            'days_remaining': days_remaining,
+            'daily_allowance': daily_allowance,
+            'weekly_allowance': weekly_allowance,
+            'current_month': calendar.month_name[current_month],
+            'current_year': current_year
+        }
+    
     def create_category_spending_chart(self, df):
         """Create interactive category spending bar chart using Plotly."""
         expenses_df = df[df['Amount'] < 0].copy()
@@ -3860,6 +3923,74 @@ def main():
                         value=f"{savings_rate:.1f}%",
                         delta="Excellent!" if savings_rate >= 20 else "Good!" if savings_rate >= 10 else "Needs improvement"
                     )
+                
+                # Monthly Budget Overview
+                st.markdown('<div class="chart-header">💰 Monthly Budget Overview</div>', unsafe_allow_html=True)
+                
+                budget_info = analyzer.calculate_monthly_disposable_income(filtered_df)
+                
+                # Create alert based on disposable income
+                if budget_info['disposable_income'] > 0:
+                    budget_status = "positive"
+                    budget_message = "✅ You have money available for spending!"
+                elif budget_info['disposable_income'] == 0:
+                    budget_status = "neutral"
+                    budget_message = "⚠️ You've allocated all your income to fixed expenses."
+                else:
+                    budget_status = "negative"
+                    budget_message = "🚨 Your fixed expenses exceed your income!"
+                
+                # Display budget overview in columns
+                bcol1, bcol2, bcol3, bcol4 = st.columns(4)
+                
+                with bcol1:
+                    st.metric(
+                        label=f"💵 {budget_info['current_month']} Income",
+                        value=f"${budget_info['monthly_income']:,.2f}",
+                        help="Total income for the current month"
+                    )
+                
+                with bcol2:
+                    st.metric(
+                        label="📋 Subscriptions",
+                        value=f"${budget_info['subscription_costs']:,.2f}",
+                        help="Monthly subscription and recurring payment costs"
+                    )
+                
+                with bcol3:
+                    st.metric(
+                        label="🏠 Fixed Expenses",
+                        value=f"${budget_info['recurring_expenses']:,.2f}",
+                        help="Bills, utilities, rent, insurance from transactions"
+                    )
+                
+                with bcol4:
+                    color = "normal" if budget_info['disposable_income'] >= 0 else "inverse"
+                    st.metric(
+                        label="💸 Available to Spend",
+                        value=f"${budget_info['disposable_income']:,.2f}",
+                        delta=budget_message.split(' ', 1)[1] if ' ' in budget_message else budget_message,
+                        help="Money remaining after all fixed costs"
+                    )
+                
+                # Daily and weekly spending guidance
+                if budget_info['disposable_income'] > 0:
+                    st.success(f"""
+                    **🎯 Spending Guidance for {budget_info['current_month']}:**
+                    - **Daily Budget:** ${budget_info['daily_allowance']:,.2f} for {budget_info['days_remaining']} remaining days
+                    - **Weekly Budget:** ${budget_info['weekly_allowance']:,.2f} per week
+                    - **Total Available:** ${budget_info['disposable_income']:,.2f} after all fixed costs
+                    """)
+                elif budget_info['disposable_income'] == 0:
+                    st.warning(f"""
+                    **⚠️ Budget Alert:** All ${budget_info['monthly_income']:,.2f} of your monthly income is allocated to fixed expenses.
+                    Consider reviewing your subscriptions and recurring costs.
+                    """)
+                else:
+                    st.error(f"""
+                    **🚨 Budget Warning:** Your fixed costs (${budget_info['total_fixed_costs']:,.2f}) exceed your monthly income (${budget_info['monthly_income']:,.2f}) by ${abs(budget_info['disposable_income']):,.2f}.
+                    Immediate action needed to balance your budget!
+                    """)
                 
                 # Charts section
                 st.markdown('<div class="chart-header">📈 Financial Visualizations</div>', unsafe_allow_html=True)
