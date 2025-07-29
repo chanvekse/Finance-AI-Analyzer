@@ -3161,40 +3161,36 @@ def main():
     if not OCR_AVAILABLE:
         st.info("ℹ️ **Note:** OCR scanning for receipts is disabled. To enable automatic receipt text extraction, install optional dependencies: `pip install -r requirements-ocr.txt`")
     
+    # Quick Expense Entry (TOP PRIORITY - Most Used Feature)
+    st.markdown('<div class="chart-header">⚡ Quick Expense Entry</div>', unsafe_allow_html=True)
+    analyzer.manage_manual_expenses()
+    
     # Sidebar
     st.sidebar.header("📋 Instructions")
     st.sidebar.markdown("""
-    1. **Upload CSV**: Your file should have columns: Date, Description, Amount
-    2. **Filter Data**: Use interactive filters below to focus analysis
-    3. **Explore Charts**: All visualizations are interactive with zoom/pan
-    4. **Add Subscriptions**: Manually enter your recurring payments
-    5. **Track Groceries**: Upload receipt photos or enter items manually
-    6. **Setup SMS Alerts**: Get notified 1 day before payments are due
-    7. **Download Reports**: Generate PDF or Excel summaries
+    1. **Quick Entry**: Add expenses instantly at the top of the page
+    2. **Upload CSV**: Import bank statement data (optional)
+    3. **View Overview**: See your financial metrics and charts
+    4. **Get Insights**: Review personalized financial recommendations
+    5. **Manage Items**: Use tabs for subscriptions, groceries, and SMS alerts
+    6. **Export Reports**: Generate PDF/Excel reports in the Reports tab
     
-    **📋 Manual Subscription Management:**
-    - ✏️ **Add Services**: Enter subscription/utility details manually
-    - 💰 **Set Amounts**: Specify exact monthly payment amounts
-    - 📅 **Due Dates**: Set the day of month when payment is due
-    - 🔄 **Auto-Calculate**: Next due dates calculated automatically
-    - 🗑️ **Remove/Edit**: Manage your subscription list easily
-    - 📊 **Track Totals**: See total monthly commitments
+    **⚡ Quick Expense Entry (Top Priority):**
+    - ✏️ **Instant Access**: Add expenses immediately at the top
+    - 📅 **Auto-Date**: Date defaults to today for quick entry
+    - 🏷️ **Category Dropdown**: 19 preset categories for easy selection
+    - 💰 **Amount & Notes**: Quick amount entry with optional notes
+    - 🔄 **Real-time Integration**: Instantly appears in all charts and reports
     
-    **🛒 Grocery Receipt Tracking:**
-    - 📱 **Mobile Upload**: Take photos of receipts with your phone
-    - 🔍 **OCR Scanning**: Automatic text extraction (optional - install requirements-ocr.txt)
-    - 🏷️ **Auto-Categorize**: Smart categorization (Snacks, Milk, Vegetables, etc.)
-    - ✏️ **Manual Entry**: Add items manually (works without OCR)
-    - 📊 **Category Tracking**: See spending by Snacks, Dairy & Milk, Vegetables, etc.
-    - 📈 **YTD Analysis**: Year-to-date spending breakdown by grocery category
-    - 🛍️ **Trip Analysis**: Track spending per grocery store visit
-    - 🏆 **Top Items**: See your most expensive grocery purchases
+    **⚙️ Management Tabs (Organized):**
+    - 📋 **Subscriptions**: Track recurring payments with SMS alerts
+    - 🛒 **Groceries**: Receipt scanning and item categorization
+    - 📱 **SMS Alerts**: Setup payment reminders via Twilio
     
-    **📱 SMS Payment Alerts:**
-    - 🔔 **1-Day Reminders**: Get SMS alerts 1 day before due date
-    - ⚙️ **Manual Only**: Alerts only for manually entered subscriptions
-    - 📲 **Twilio Integration**: Secure SMS delivery via Twilio API
-    - 🔧 **Test & Send**: Send test messages and immediate alerts
+    **📊 Reports & Data (Bottom):**
+    - 📄 **PDF Reports**: Professional financial summaries
+    - 📊 **Excel Export**: Detailed multi-sheet analysis
+    - 📋 **Data View**: Browse all your transaction data
     
     **Interactive Features:**
     - 🔍 **Date & Category Filters**: Focus on specific time periods or categories
@@ -3345,24 +3341,8 @@ def main():
                 
 
                 
-                # Manual Subscription Management Section
-                st.markdown('<div class="chart-header">📋 Manual Subscription Management</div>', unsafe_allow_html=True)
-                
-                # Manage manual subscriptions
-                subscriptions = analyzer.manage_manual_subscriptions()
-                
-                # Grocery Receipt Tracking Section
-                st.markdown('<div class="chart-header">🛒 Grocery Receipt Tracking</div>', unsafe_allow_html=True)
-                
-                # Manage grocery receipts
-                analyzer.manage_grocery_receipts()
-                
-                # SMS Notification Dashboard
-                st.markdown('<div class="chart-header">📱 SMS Payment Alerts</div>', unsafe_allow_html=True)
-                analyzer.create_notification_dashboard(sms_config)
-                
                 # Enhanced Insights section with optimization
-                st.markdown('<div class="insight-header">💡 Financial Insights & Expense Optimization</div>', unsafe_allow_html=True)
+                st.markdown('<div class="insight-header">💡 Financial Insights & Recommendations</div>', unsafe_allow_html=True)
                 
                 # Create columns for different types of insights
                 insight_col1, insight_col2 = st.columns([1, 1])
@@ -3375,63 +3355,82 @@ def main():
                             st.markdown(insight)
                 
                 with insight_col2:
-                    st.markdown("#### 🎯 Expense Optimization Recommendations")
+                    st.markdown("#### 🎯 Expense Optimization Tips")
                     optimization_insights = analyzer.create_expense_optimization_insights(filtered_df)
                     for insight in optimization_insights:
                         if insight:  # Skip empty lines
                             st.markdown(insight)
                 
-                # Data preview
-                with st.expander("📋 View Filtered Transaction Data"):
+                # Quick Management Section
+                st.markdown('<div class="chart-header">⚙️ Expense & Subscription Management</div>', unsafe_allow_html=True)
+                
+                # Create tabs for better organization
+                mgmt_tab1, mgmt_tab2, mgmt_tab3 = st.tabs(["📋 Subscriptions", "🛒 Grocery Receipts", "📱 SMS Alerts"])
+                
+                with mgmt_tab1:
+                    # Manage manual subscriptions
+                    subscriptions = analyzer.manage_manual_subscriptions()
+                
+                with mgmt_tab2:
+                    # Manage grocery receipts
+                    analyzer.manage_grocery_receipts()
+                
+                with mgmt_tab3:
+                    # SMS Notification Dashboard
+                    analyzer.create_notification_dashboard(sms_config)
+                
+                # Reports & Data Section
+                st.markdown('<div class="chart-header">📊 Reports & Data Export</div>', unsafe_allow_html=True)
+                
+                # Create tabs for reports and data
+                report_tab1, report_tab2 = st.tabs(["📄 Generate Reports", "📋 View Data"])
+                
+                with report_tab1:
+                    # Create two columns for download buttons
+                    pdf_col, excel_col = st.columns(2)
+                    
+                    with pdf_col:
+                        if st.button("🔽 Generate PDF Report", type="primary"):
+                            with st.spinner("Generating PDF report..."):
+                                pdf_data = analyzer.generate_pdf_report(
+                                    filtered_df, total_income, total_expenses, total_savings, savings_rate
+                                )
+                                
+                                if pdf_data:
+                                    st.download_button(
+                                        label="📥 Download PDF Report",
+                                        data=pdf_data,
+                                        file_name=f"financial_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                                        mime="application/pdf",
+                                        type="secondary"
+                                    )
+                                    st.success("✅ PDF report generated successfully!")
+                    
+                    with excel_col:
+                        if st.button("📊 Generate Excel Report", type="primary"):
+                            with st.spinner("Generating Excel report..."):
+                                excel_data = analyzer.generate_excel_report(
+                                    filtered_df, total_income, total_expenses, total_savings, savings_rate
+                                )
+                                
+                                if excel_data:
+                                    st.download_button(
+                                        label="📥 Download Excel Report",
+                                        data=excel_data,
+                                        file_name=f"financial_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                        type="secondary"
+                                    )
+                                    st.success("✅ Excel report generated successfully!")
+                
+                with report_tab2:
+                    # Data preview
+                    st.markdown("#### 📋 Filtered Transaction Data")
                     st.dataframe(filtered_df, use_container_width=True)
-                
-                # PDF Download
-                st.markdown('<div class="chart-header">📄 Generate & Download Report</div>', unsafe_allow_html=True)
-                
-                # Create two columns for download buttons
-                pdf_col, excel_col = st.columns(2)
-                
-                with pdf_col:
-                    if st.button("🔽 Generate PDF Report", type="primary"):
-                        with st.spinner("Generating PDF report..."):
-                            pdf_data = analyzer.generate_pdf_report(
-                                filtered_df, total_income, total_expenses, total_savings, savings_rate
-                            )
-                            
-                            if pdf_data:
-                                st.download_button(
-                                    label="📥 Download PDF Report",
-                                    data=pdf_data,
-                                    file_name=f"financial_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                                    mime="application/pdf",
-                                    type="secondary"
-                                )
-                                st.success("✅ PDF report generated successfully!")
-                
-                with excel_col:
-                    if st.button("📊 Generate Excel Report", type="primary"):
-                        with st.spinner("Generating Excel report..."):
-                            excel_data = analyzer.generate_excel_report(
-                                filtered_df, total_income, total_expenses, total_savings, savings_rate
-                            )
-                            
-                            if excel_data:
-                                st.download_button(
-                                    label="📥 Download Excel Report",
-                                    data=excel_data,
-                                    file_name=f"financial_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                    type="secondary"
-                                )
-                                st.success("✅ Excel report generated successfully!")
         
     except Exception as e:
         st.error(f"❌ Error reading file: {e}")
         st.info("Please ensure your CSV file has the correct format with Date, Description, and Amount columns.")
-    
-    # Manual Expense Entry (always available)
-    st.markdown('<div class="chart-header">✏️ Quick Expense Entry</div>', unsafe_allow_html=True)
-    analyzer.manage_manual_expenses()
     
     # Show welcome message if no data
     if uploaded_file is None and len(analyzer.load_manual_expenses()) == 0 and len(analyzer.load_grocery_items()) == 0:
