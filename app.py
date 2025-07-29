@@ -1184,6 +1184,105 @@ class StreamlitBankAnalyzer:
         
         return fig
     
+    def create_recurring_expenses_table(self, df):
+        """Create detailed table view of recurring expenses with dates and amounts."""
+        recurring_categories = ['Subscriptions', 'Utilities', 'Gas & Fuel', 'Groceries', 'Insurance', 'Housing']
+        
+        expenses_df = df[df['Amount'] < 0].copy()
+        expenses_df['Amount'] = expenses_df['Amount'].abs()
+        
+        # Filter for recurring categories
+        recurring_df = expenses_df[expenses_df['Category'].isin(recurring_categories)]
+        
+        if len(recurring_df) == 0:
+            return None
+        
+        # Group by merchant/description to identify recurring patterns
+        merchant_analysis = recurring_df.groupby(['Description', 'Category']).agg({
+            'Amount': ['mean', 'count', 'sum', 'std'],
+            'Date': ['min', 'max']
+        }).round(2)
+        
+        # Flatten column names
+        merchant_analysis.columns = ['Avg_Amount', 'Frequency', 'Total_Spent', 'Amount_Variance', 'First_Payment', 'Last_Payment']
+        
+        # Calculate monthly frequency and next expected payment
+        merchant_analysis['Days_Between_Payments'] = (
+            (merchant_analysis['Last_Payment'] - merchant_analysis['First_Payment']).dt.days / 
+            (merchant_analysis['Frequency'] - 1)
+        ).fillna(0).round(0)
+        
+        # Estimate next payment date
+        merchant_analysis['Next_Expected_Payment'] = (
+            merchant_analysis['Last_Payment'] + 
+            pd.to_timedelta(merchant_analysis['Days_Between_Payments'], unit='days')
+        )
+        
+        # Add payment pattern classification
+        def classify_payment_pattern(row):
+            if row['Frequency'] >= 3:
+                if 25 <= row['Days_Between_Payments'] <= 35:
+                    return 'Monthly'
+                elif 85 <= row['Days_Between_Payments'] <= 95:
+                    return 'Quarterly'
+                elif 360 <= row['Days_Between_Payments'] <= 370:
+                    return 'Annual'
+                elif row['Days_Between_Payments'] < 10:
+                    return 'Weekly/Frequent'
+                else:
+                    return 'Irregular'
+            else:
+                return 'One-time/New'
+        
+        merchant_analysis['Payment_Pattern'] = merchant_analysis.apply(classify_payment_pattern, axis=1)
+        
+        # Sort by category and total spent
+        merchant_analysis = merchant_analysis.reset_index()
+        merchant_analysis = merchant_analysis.sort_values(['Category', 'Total_Spent'], ascending=[True, False])
+        
+        return merchant_analysis
+    
+    def create_detailed_payment_schedule(self, df):
+        """Create a detailed payment schedule table showing all recurring payment dates."""
+        recurring_categories = ['Subscriptions', 'Utilities', 'Gas & Fuel', 'Insurance']
+        
+        expenses_df = df[df['Amount'] < 0].copy()
+        expenses_df['Amount'] = expenses_df['Amount'].abs()
+        
+        # Filter for recurring categories and focus on likely recurring payments
+        recurring_df = expenses_df[expenses_df['Category'].isin(recurring_categories)]
+        
+        if len(recurring_df) == 0:
+            return None
+        
+        # Group to find merchants with multiple payments
+        merchant_counts = recurring_df.groupby('Description').size()
+        recurring_merchants = merchant_counts[merchant_counts >= 2].index
+        
+        # Filter for only recurring merchants
+        schedule_df = recurring_df[recurring_df['Description'].isin(recurring_merchants)].copy()
+        
+        if len(schedule_df) == 0:
+            return None
+        
+        # Add useful columns for schedule analysis
+        schedule_df['Day_of_Month'] = schedule_df['Date'].dt.day
+        schedule_df['Month_Year'] = schedule_df['Date'].dt.strftime('%Y-%m')
+        schedule_df['Days_Since_Last'] = schedule_df.groupby('Description')['Date'].diff().dt.days
+        
+        # Sort by merchant and date
+        schedule_df = schedule_df.sort_values(['Description', 'Date'])
+        
+        # Select relevant columns for display
+        display_columns = ['Date', 'Description', 'Category', 'Amount', 'Day_of_Month', 'Days_Since_Last']
+        schedule_display = schedule_df[display_columns].copy()
+        
+        # Format the date for better display
+        schedule_display['Date'] = schedule_display['Date'].dt.strftime('%Y-%m-%d')
+        schedule_display['Amount'] = schedule_display['Amount'].apply(lambda x: f"${x:,.2f}")
+        
+        return schedule_display
+    
     def get_insights(self, df, total_income, total_expenses, total_savings, savings_rate):
         """Generate financial insights."""
         insights = []
@@ -1538,6 +1637,21 @@ class StreamlitBankAnalyzer:
                                                                (365 / subscription_details['Frequency'])).round(2)
                     subscription_details = subscription_details.sort_values('Total_Cost', ascending=False)
                     subscription_details.to_excel(writer, sheet_name='Subscription Details', index=True)
+                
+                # Sheet 9: Detailed Payment Schedule
+                schedule_df = expenses_df_recurring.copy()
+                merchant_counts = schedule_df.groupby('Description').size()
+                recurring_merchants = merchant_counts[merchant_counts >= 2].index
+                detailed_schedule = schedule_df[schedule_df['Description'].isin(recurring_merchants)].copy()
+                
+                if len(detailed_schedule) > 0:
+                    detailed_schedule['Day_of_Month'] = detailed_schedule['Date'].dt.day
+                    detailed_schedule['Days_Since_Last'] = detailed_schedule.groupby('Description')['Date'].diff().dt.days
+                    detailed_schedule = detailed_schedule.sort_values(['Description', 'Date'])
+                    
+                    export_schedule = detailed_schedule[['Date', 'Description', 'Category', 'Amount', 'Day_of_Month', 'Days_Since_Last']].copy()
+                    export_schedule['Date'] = export_schedule['Date'].dt.strftime('%Y-%m-%d')
+                    export_schedule.to_excel(writer, sheet_name='Payment Schedule', index=False)
             
             excel_buffer.seek(0)
             return excel_buffer.getvalue()
@@ -1569,6 +1683,8 @@ def main():
     - 📊 **Monthly Tracking**: Subscriptions, utilities, groceries, gas & fuel
     - 📈 **YTD Breakdown**: Year-to-date spending by category
     - 📅 **Calendar View**: Identify patterns in recurring payments
+    - 📋 **Payment Tables**: Detailed tables with due dates and amounts
+    - 🔍 **Search & Filter**: Find specific payments and merchants
     - 🎯 **Optimization Tips**: Find ways to reduce unwanted expenses
     
     **Interactive Features:**
@@ -1578,7 +1694,7 @@ def main():
     
     **Report Options:**
     - 📄 **PDF**: Visual summary with charts
-    - 📊 **Excel**: 8 detailed sheets including recurring expense analysis
+    - 📊 **Excel**: 9 detailed sheets including recurring expense tables
     
     **CSV Format Example:**
     ```
@@ -1752,6 +1868,144 @@ def main():
                 calendar_chart = analyzer.create_recurring_expenses_calendar(filtered_df)
                 if calendar_chart:
                     st.plotly_chart(calendar_chart, use_container_width=True)
+                
+                # Recurring Expenses Tables Section
+                st.markdown('<div class="chart-header">📋 Recurring Expenses Tables</div>', unsafe_allow_html=True)
+                
+                # Create tabs for different table views
+                table_tab1, table_tab2 = st.tabs(["📊 Payment Summary", "📅 Detailed Schedule"])
+                
+                with table_tab1:
+                    st.subheader("📊 Recurring Payment Summary")
+                    st.markdown("**Overview of your recurring expenses with payment patterns and next expected dates**")
+                    
+                    recurring_table = analyzer.create_recurring_expenses_table(filtered_df)
+                    if recurring_table is not None and len(recurring_table) > 0:
+                        # Format the table for better display
+                        display_table = recurring_table.copy()
+                        display_table['Avg_Amount'] = display_table['Avg_Amount'].apply(lambda x: f"${x:,.2f}")
+                        display_table['Total_Spent'] = display_table['Total_Spent'].apply(lambda x: f"${x:,.2f}")
+                        display_table['Amount_Variance'] = display_table['Amount_Variance'].apply(lambda x: f"${x:,.2f}")
+                        display_table['First_Payment'] = display_table['First_Payment'].dt.strftime('%Y-%m-%d')
+                        display_table['Last_Payment'] = display_table['Last_Payment'].dt.strftime('%Y-%m-%d')
+                        display_table['Next_Expected_Payment'] = display_table['Next_Expected_Payment'].dt.strftime('%Y-%m-%d')
+                        display_table['Days_Between_Payments'] = display_table['Days_Between_Payments'].astype(int)
+                        
+                        # Rename columns for better readability
+                        display_table = display_table.rename(columns={
+                            'Description': 'Merchant/Service',
+                            'Category': 'Category',
+                            'Avg_Amount': 'Avg Amount',
+                            'Frequency': 'Count',
+                            'Total_Spent': 'Total Spent',
+                            'Amount_Variance': 'Amount Variance',
+                            'First_Payment': 'First Payment',
+                            'Last_Payment': 'Last Payment',
+                            'Days_Between_Payments': 'Days Between',
+                            'Next_Expected_Payment': 'Next Expected',
+                            'Payment_Pattern': 'Pattern'
+                        })
+                        
+                        # Display the table
+                        st.dataframe(
+                            display_table,
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "Pattern": st.column_config.TextColumn(
+                                    help="Payment frequency pattern (Monthly, Quarterly, etc.)"
+                                ),
+                                "Next Expected": st.column_config.DateColumn(
+                                    help="Estimated next payment date based on historical pattern"
+                                ),
+                                "Days Between": st.column_config.NumberColumn(
+                                    help="Average days between payments"
+                                )
+                            }
+                        )
+                        
+                        # Add summary statistics
+                        st.markdown("---")
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            monthly_recurring = recurring_table[recurring_table['Payment_Pattern'] == 'Monthly']
+                            monthly_total = monthly_recurring['Avg_Amount'].sum() if len(monthly_recurring) > 0 else 0
+                            st.metric("💳 Monthly Recurring", f"${monthly_total:,.2f}")
+                        
+                        with col2:
+                            total_recurring_services = len(recurring_table)
+                            st.metric("🔄 Recurring Services", total_recurring_services)
+                        
+                        with col3:
+                            subscription_total = recurring_table[recurring_table['Category'] == 'Subscriptions']['Total_Spent'].sum()
+                            st.metric("📺 Subscriptions YTD", f"${subscription_total:,.2f}")
+                        
+                        with col4:
+                            utilities_total = recurring_table[recurring_table['Category'] == 'Utilities']['Total_Spent'].sum()
+                            st.metric("⚡ Utilities YTD", f"${utilities_total:,.2f}")
+                    
+                    else:
+                        st.info("📝 No recurring expenses found in the selected data range.")
+                
+                with table_tab2:
+                    st.subheader("📅 Detailed Payment Schedule")
+                    st.markdown("**Complete history of all recurring payments with exact dates and amounts**")
+                    
+                    payment_schedule = analyzer.create_detailed_payment_schedule(filtered_df)
+                    if payment_schedule is not None and len(payment_schedule) > 0:
+                        # Add search functionality
+                        search_term = st.text_input(
+                            "🔍 Search payments:", 
+                            placeholder="Search by merchant name, category, or amount...",
+                            help="Filter the payment schedule by typing keywords"
+                        )
+                        
+                        # Filter based on search
+                        if search_term:
+                            mask = (
+                                payment_schedule['Description'].str.contains(search_term, case=False, na=False) |
+                                payment_schedule['Category'].str.contains(search_term, case=False, na=False) |
+                                payment_schedule['Amount'].str.contains(search_term, case=False, na=False)
+                            )
+                            filtered_schedule = payment_schedule[mask]
+                        else:
+                            filtered_schedule = payment_schedule
+                        
+                        # Rename columns for better display
+                        filtered_schedule = filtered_schedule.rename(columns={
+                            'Date': 'Payment Date',
+                            'Description': 'Merchant/Service',
+                            'Category': 'Category',
+                            'Amount': 'Amount',
+                            'Day_of_Month': 'Day of Month',
+                            'Days_Since_Last': 'Days Since Last'
+                        })
+                        
+                        # Display the filtered table
+                        st.dataframe(
+                            filtered_schedule,
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "Payment Date": st.column_config.DateColumn(),
+                                "Day of Month": st.column_config.NumberColumn(
+                                    help="Day of the month when payment was made"
+                                ),
+                                "Days Since Last": st.column_config.NumberColumn(
+                                    help="Number of days since the previous payment to the same merchant"
+                                )
+                            }
+                        )
+                        
+                        # Show count of filtered results
+                        if search_term:
+                            st.caption(f"Showing {len(filtered_schedule)} of {len(payment_schedule)} payments")
+                        else:
+                            st.caption(f"Total payments shown: {len(payment_schedule)}")
+                    
+                    else:
+                        st.info("📝 No detailed payment schedule available for the selected data range.")
                 
                 # Enhanced Insights section with optimization
                 st.markdown('<div class="insight-header">💡 Financial Insights & Expense Optimization</div>', unsafe_allow_html=True)
