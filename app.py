@@ -329,63 +329,73 @@ class StreamlitBankAnalyzer:
         st.sidebar.markdown("---")
         st.sidebar.header("💾 Data Persistence")
         
-        # Show first-time user message
-        if st.session_state.get('first_time_user', True):
-            st.sidebar.info("🆕 **First time?** Enable data persistence below to save your entries permanently!")
+        current_user = st.session_state.get('current_user', '')
+        is_test_user = current_user == 'test'
         
-        # Persistence toggle
-        current_enabled = st.session_state.get('persistence_enabled', False)
-        persistence_enabled = st.sidebar.checkbox(
-            "💾 Save data permanently",
-            value=current_enabled,
-            help="When enabled, your expenses, subscriptions, and grocery items will be saved to disk and persist between app restarts."
-        )
-        
-        # Update settings if changed
-        if persistence_enabled != current_enabled:
-            st.session_state.persistence_enabled = persistence_enabled
+        if is_test_user:
+            # Test user - show that data is temporary
+            st.sidebar.warning("🧪 **Test User Mode**")
+            st.sidebar.info("💡 Your data is temporary and will be cleared on logout - perfect for testing!")
+            st.session_state.persistence_enabled = False
+        else:
+            # Regular users - show automatic persistence
+            st.sidebar.success("💾 **Auto-Persistence Active**")
+            st.sidebar.info("✅ Your data automatically saves and persists between sessions!")
             
-            # Save settings
-            settings = self.load_settings()
-            settings['persistence_enabled'] = persistence_enabled
-            settings['first_time_user'] = False
-            self.save_settings(settings)
-            
-            if persistence_enabled:
-                # Load existing data from files
-                self.load_all_data_from_files()
-                st.sidebar.success("✅ Data persistence enabled! Your data will now be saved.")
+            # For admin, show manual control option
+            if 'admin' in st.session_state.get('user_permissions', []):
+                current_enabled = st.session_state.get('persistence_enabled', True)
+                persistence_enabled = st.sidebar.checkbox(
+                    "🔧 Manual persistence control (Admin)",
+                    value=current_enabled,
+                    help="Admin can manually control persistence settings"
+                )
+                
+                if persistence_enabled != current_enabled:
+                    st.session_state.persistence_enabled = persistence_enabled
+                    user_settings = self.load_user_settings(current_user)
+                    user_settings['persistence_enabled'] = persistence_enabled
+                    self.save_user_settings(current_user, user_settings)
+                    
+                    if persistence_enabled:
+                        self.load_all_data_from_files()
+                        st.sidebar.success("✅ Persistence re-enabled!")
+                    else:
+                        st.sidebar.warning("⚠️ Persistence disabled for this session!")
+                    st.rerun()
             else:
-                st.sidebar.warning("⚠️ Data persistence disabled. Your data will only last for this session.")
-            
-            st.rerun()
+                st.session_state.persistence_enabled = True
         
-        # Show data status
-        if persistence_enabled:
+        # Show data management for persistent users
+        if st.session_state.get('persistence_enabled', False):
             data_count = (
                 len(st.session_state.get('manual_expenses', [])) +
                 len(st.session_state.get('manual_subscriptions', [])) +
                 len(st.session_state.get('grocery_items', []))
             )
             
-            st.sidebar.success(f"💾 **Persistent Storage Active**\n📊 {data_count} items saved")
+            st.sidebar.info(f"📊 **Data Status:** {data_count} items stored")
             
             # Data management options
             with st.sidebar.expander("🗂️ Data Management"):
-                if st.button("🔄 Reload Data from Files"):
-                    self.load_all_data_from_files()
-                    st.success("Data reloaded!")
-                    st.rerun()
-                
-                if st.button("💾 Save Current Data"):
-                    self.save_all_data_to_files()
-                    st.success("Data saved!")
-                
-                if st.button("🗑️ Clear All Saved Data", type="secondary"):
-                    if st.button("⚠️ Confirm Delete All Saved Data"):
-                        self.clear_all_saved_data()
-                        st.success("All saved data cleared!")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("🔄 Reload"):
+                        self.load_all_data_from_files()
+                        st.success("Data reloaded!")
                         st.rerun()
+                
+                with col2:
+                    if st.button("💾 Save"):
+                        self.save_all_data_to_files()
+                        st.success("Data saved!")
+                
+                if not is_test_user:
+                    if st.button("🗑️ Clear My Data", type="secondary"):
+                        if st.button("⚠️ Confirm Clear Data"):
+                            self.clear_all_saved_data()
+                            st.success("Your data cleared!")
+                            st.rerun()
         else:
             st.sidebar.info("📝 **Session Storage Only**\nData will be lost when you restart the app.")
     
@@ -2783,6 +2793,14 @@ class StreamlitBankAnalyzer:
         # Save to persistent storage
         self.save_users_to_file()
         
+        # Setup automatic persistence for new user
+        user_settings = {
+            'persistence_enabled': True,
+            'first_time_user': False,
+            'created_by': st.session_state.get('current_user', 'system')
+        }
+        self.save_user_settings(username, user_settings)
+        
         return True
     
     def login_interface(self):
@@ -2808,6 +2826,10 @@ class StreamlitBankAnalyzer:
                     st.session_state.current_user = username
                     st.session_state.user_role = st.session_state.users[username]['role']
                     st.session_state.user_permissions = st.session_state.users[username]['permissions']
+                    
+                    # Setup user-specific persistence and load their data
+                    self.setup_user_on_login(username)
+                    
                     st.success(f"✅ Welcome back, {username}!")
                     st.rerun()
                 else:
@@ -2836,6 +2858,48 @@ class StreamlitBankAnalyzer:
         
         return False
     
+    def setup_user_on_login(self, username):
+        """Setup user-specific persistence and load their data on login."""
+        # Enable persistence automatically for all users except test user
+        is_test_user = st.session_state.users[username].get('is_test_user', False)
+        
+        if not is_test_user:
+            # Enable persistence for regular users automatically
+            st.session_state.persistence_enabled = True
+            
+            # Load user-specific settings
+            user_settings = self.load_user_settings(username)
+            user_settings['persistence_enabled'] = True
+            user_settings['first_time_user'] = False
+            self.save_user_settings(username, user_settings)
+            
+            # Load user's existing data if it exists
+            self.load_all_data_from_files()
+        else:
+            # Test user - disable persistence but keep session data
+            st.session_state.persistence_enabled = False
+    
+    def load_user_settings(self, username):
+        """Load user-specific settings."""
+        user_settings_file = self.data_dir / f"{username}_settings.json"
+        if user_settings_file.exists():
+            try:
+                with open(user_settings_file, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                st.error(f"Error loading settings for {username}: {e}")
+                return {}
+        return {'persistence_enabled': True, 'first_time_user': True}
+    
+    def save_user_settings(self, username, settings):
+        """Save user-specific settings."""
+        user_settings_file = self.data_dir / f"{username}_settings.json"
+        try:
+            with open(user_settings_file, 'w') as f:
+                json.dump(settings, f, indent=2, default=str)
+        except Exception as e:
+            st.error(f"Error saving settings for {username}: {e}")
+    
     def user_management_interface(self):
         """Interface for managing users (admin only)."""
         if not ('user_permissions' in st.session_state and 'admin' in st.session_state.user_permissions):
@@ -2863,6 +2927,7 @@ class StreamlitBankAnalyzer:
                         if new_username not in st.session_state.users:
                             self.create_user(new_username, new_password, new_role, permissions)
                             st.success(f"✅ User '{new_username}' created successfully!")
+                            st.info(f"💾 **Auto-persistence enabled** for {new_username} - their data will be saved permanently!")
                             st.rerun()
                         else:
                             st.error("❌ Username already exists!")
@@ -3478,14 +3543,31 @@ def main():
     
     # Sidebar
     st.sidebar.header("📋 Instructions")
+    current_user = st.session_state.get('current_user', '')
+    is_test_user = current_user == 'test'
+    
+    if is_test_user:
+        st.sidebar.markdown("""
+        🧪 **Test User Guide:**
+        1. **Quick Entry**: Add test expenses at the top
+        2. **Upload CSV**: Try importing sample data (optional)
+        3. **View Overview**: See sample financial metrics and charts
+        4. **Test Features**: Try subscriptions, groceries, and SMS alerts
+        5. **Export Reports**: Generate sample PDF/Excel reports
+        6. **Logout**: All test data automatically clears on logout!
+        """)
+    else:
+        st.sidebar.markdown("""
+        💾 **Your data auto-saves permanently!**
+        1. **Quick Entry**: Add expenses instantly at the top of the page
+        2. **Upload CSV**: Import bank statement data (optional)
+        3. **View Overview**: See your financial metrics and charts
+        4. **Get Insights**: Review personalized financial recommendations
+        5. **Manage Items**: Use tabs for subscriptions, groceries, and SMS alerts
+        6. **Export Reports**: Generate PDF/Excel reports in the Reports tab
+        """)
+    
     st.sidebar.markdown("""
-    1. **Enable Persistence**: Turn on data saving below (recommended for real use)
-    2. **Quick Entry**: Add expenses instantly at the top of the page
-    3. **Upload CSV**: Import bank statement data (optional)
-    4. **View Overview**: See your financial metrics and charts
-    5. **Get Insights**: Review personalized financial recommendations
-    6. **Manage Items**: Use tabs for subscriptions, groceries, and SMS alerts
-    7. **Export Reports**: Generate PDF/Excel reports in the Reports tab
     
     **⚡ Quick Expense Entry (Top Priority):**
     - ✏️ **Instant Access**: Add expenses immediately at the top

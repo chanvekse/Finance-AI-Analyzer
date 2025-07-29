@@ -4,6 +4,7 @@ user_data/
 
 # User Credentials - Security Sensitive (DO NOT COMMIT)
 users.json
+*_settings.json
 
 # Python
 __pycache__/
