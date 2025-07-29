@@ -3331,26 +3331,11 @@ def main():
                 # Charts section
                 st.markdown('<div class="chart-header">📈 Financial Visualizations</div>', unsafe_allow_html=True)
                 
-                # Amount Distribution Histogram (full width)
-                st.subheader("💹 Amount Distribution Analysis")
-                histogram_chart = analyzer.create_amount_histogram(filtered_df)
-                if histogram_chart:
-                    st.plotly_chart(histogram_chart, use_container_width=True)
-                
-                # Create columns for other charts
-                chart_col1, chart_col2 = st.columns(2)
-                
-                with chart_col1:
-                    # Category spending chart
-                    category_chart = analyzer.create_category_spending_chart(filtered_df)
-                    if category_chart:
-                        st.plotly_chart(category_chart, use_container_width=True)
-                
-                with chart_col2:
-                    # Pie chart
-                    pie_chart = analyzer.create_pie_chart(filtered_df)
-                    if pie_chart:
-                        st.plotly_chart(pie_chart, use_container_width=True)
+                # Category spending chart (full width)
+                st.subheader("💰 Category Spending Analysis")
+                category_chart = analyzer.create_category_spending_chart(filtered_df)
+                if category_chart:
+                    st.plotly_chart(category_chart, use_container_width=True)
                 
                 # Monthly trends chart (full width)
                 st.subheader("📊 Monthly Trends & Savings Rate")
@@ -3358,11 +3343,7 @@ def main():
                 if monthly_chart:
                     st.plotly_chart(monthly_chart, use_container_width=True)
                 
-                # Transaction timeline chart (full width)
-                st.subheader("📅 Transaction Timeline & Running Balance")
-                timeline_chart = analyzer.create_transaction_timeline(filtered_df)
-                if timeline_chart:
-                    st.plotly_chart(timeline_chart, use_container_width=True)
+
                 
                 # Manual Subscription Management Section
                 st.markdown('<div class="chart-header">📋 Manual Subscription Management</div>', unsafe_allow_html=True)
