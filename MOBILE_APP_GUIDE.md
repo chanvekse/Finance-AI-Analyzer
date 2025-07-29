@@ -1,72 +1,117 @@
-# 📱 Mobile App & Offline Deployment Guide
+# 📱 Mobile App & Deployment Guide
 
-This guide explains how to convert your Bank Statement Analyzer into a mobile app that works offline with password protection.
+Comprehensive guide to enable mobile uploads, deploy as mobile app, and implement offline capabilities for the Bank Statement Analyzer.
 
-## 🎯 **Mobile App Options**
+## 🎯 Mobile Capabilities Overview
+
+### 📸 Mobile Receipt Upload
+- **Camera integration** for instant receipt capture
+- **Drag-and-drop file upload** on mobile browsers
+- **OCR text extraction** with automatic item parsing
+- **Touch-optimized interface** for mobile editing
+
+### 📱 Mobile-Optimized Features
+- **Responsive design** that adapts to all screen sizes
+- **Quick expense entry** optimized for touch input
+- **Swipe-friendly navigation** and controls
+- **Mobile keyboard optimization** for number entry
+
+### 🔐 Mobile Authentication
+- **Secure login** with password protection
+- **User session persistence** across mobile sessions
+- **Auto-logout security** for mobile safety
+- **Touch ID integration** (for native apps)
+
+## 🚀 Deployment Options
 
 ### **Option 1: Progressive Web App (PWA) - Recommended**
 
 #### **✅ Advantages:**
-- Works on all devices (Android, iOS, Desktop)
-- No app store approval needed
-- Offline functionality with service workers
-- Native-like experience
-- Easy to update and maintain
+- ✅ Works on ALL devices (Android, iOS, Desktop)
+- ✅ No app store approval required
+- ✅ Offline functionality with service workers
+- ✅ Install like native app from browser
+- ✅ Automatic updates
+- ✅ Push notifications support
+- ✅ Camera access for receipt scanning
+- ✅ File system access for data storage
 
-#### **📱 Implementation Steps:**
+#### **📱 PWA Implementation:**
 
-1. **Install PWA Dependencies:**
-```bash
-pip install streamlit-pwa-runtime
-```
-
-2. **Create PWA Configuration:**
-```python
-# Add to app.py
-import streamlit as st
-from streamlit_pwa import pwa_runtime
-
-# Enable PWA
-pwa_runtime.enable_pwa()
-
-# Configure PWA settings
-st.set_page_config(
-    page_title="Finance Analyzer",
-    page_icon="💰",
-    layout="wide",
-    initial_sidebar_state="expanded",
-    # PWA settings
-    menu_items={
-        'Get Help': None,
-        'Report a bug': None,
-        'About': "Finance Analyzer - Your Personal Financial Assistant"
+##### 1. Create PWA Manifest
+Create `static/manifest.json`:
+```json
+{
+  "name": "Bank Statement Analyzer",
+  "short_name": "FinanceApp",
+  "description": "Personal finance management with receipt scanning",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#008CBA",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
     }
-)
+  ],
+  "categories": ["finance", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Quick Expense Entry",
+      "short_name": "Add Expense",
+      "description": "Quickly add a new expense",
+      "url": "/?quick=expense",
+      "icons": [{"src": "icon-expense.png", "sizes": "96x96"}]
+    },
+    {
+      "name": "Scan Receipt",
+      "short_name": "Scan",
+      "description": "Scan a grocery receipt",
+      "url": "/?quick=receipt",
+      "icons": [{"src": "icon-receipt.png", "sizes": "96x96"}]
+    }
+  ]
+}
 ```
 
-3. **Add Service Worker (create `static/sw.js`):**
+##### 2. Service Worker for Offline Support
+Create `static/sw.js`:
 ```javascript
-const CACHE_NAME = 'finance-analyzer-v1';
+const CACHE_NAME = 'finance-analyzer-v1.0';
 const urlsToCache = [
   '/',
   '/static/manifest.json',
-  '/static/icon-192x192.png',
-  '/static/icon-512x512.png'
+  '/static/icon-192.png',
+  '/static/icon-512.png'
 ];
 
-self.addEventListener('install', function(event) {
+// Install event - cache resources
+self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(function(cache) {
+      .then(cache => {
+        console.log('Opened cache');
         return cache.addAll(urlsToCache);
       })
   );
 });
 
-self.addEventListener('fetch', function(event) {
+// Fetch event - serve from cache when offline
+self.addEventListener('fetch', event => {
   event.respondWith(
     caches.match(event.request)
-      .then(function(response) {
+      .then(response => {
+        // Return cached version or fetch from network
         if (response) {
           return response;
         }
@@ -75,111 +120,567 @@ self.addEventListener('fetch', function(event) {
     )
   );
 });
+
+// Activate event - cleanup old caches
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cacheName => {
+          if (cacheName !== CACHE_NAME) {
+            console.log('Deleting old cache:', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+});
 ```
 
-4. **Create Web App Manifest (`static/manifest.json`):**
-```json
-{
-  "name": "Finance Analyzer",
-  "short_name": "FinanceApp",
-  "description": "Personal Finance Management Tool",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#4CAF50",
-  "orientation": "portrait-primary",
-  "icons": [
-    {
-      "src": "icon-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "icon-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png"
+##### 3. Update app.py for PWA Support
+Add to the beginning of `app.py`:
+```python
+import streamlit as st
+
+# PWA Configuration
+st.set_page_config(
+    page_title="Finance Analyzer",
+    page_icon="💰",
+    layout="wide",
+    initial_sidebar_state="auto",
+    menu_items={
+        'Get Help': 'https://github.com/chanvekse/Finance-AI-Analyzer',
+        'Report a bug': 'https://github.com/chanvekse/Finance-AI-Analyzer/issues',
+        'About': "Finance Analyzer - Enterprise Edition\n\nPersonal finance management with receipt scanning, subscription tracking, and multi-user support."
     }
-  ],
-  "categories": ["finance", "productivity", "utilities"]
+)
+
+# Add PWA meta tags
+st.markdown("""
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#008CBA">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Finance Analyzer">
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+</head>
+""", unsafe_allow_html=True)
+
+# Register service worker
+st.markdown("""
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('/static/sw.js')
+      .then(function(registration) {
+        console.log('ServiceWorker registration successful');
+      }, function(err) {
+        console.log('ServiceWorker registration failed: ', err);
+      });
+  });
 }
+</script>
+""", unsafe_allow_html=True)
 ```
 
-### **Option 2: Native Mobile App**
-
-#### **🔧 Using Kivy + Python:**
-
-1. **Install Kivy:**
+##### 4. Deploy PWA
 ```bash
-pip install kivy kivymd buildozer
+# Local testing
+streamlit run app.py --server.port 8501
+
+# Production deployment
+# Option A: Streamlit Cloud
+# - Push to GitHub
+# - Connect to Streamlit Cloud
+# - Deploy with custom domain
+
+# Option B: Self-hosted with HTTPS (required for PWA)
+# Install nginx and certbot for SSL
+sudo apt install nginx certbot python3-certbot-nginx
+
+# Configure nginx for Streamlit
+# /etc/nginx/sites-available/financeapp
+server {
+    listen 80;
+    server_name your-domain.com;
+    
+    location / {
+        proxy_pass http://localhost:8501;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# Enable SSL
+sudo certbot --nginx -d your-domain.com
+
+# Start services
+sudo systemctl restart nginx
+streamlit run app.py --server.port 8501
 ```
 
-2. **Create Mobile Interface:**
+### **Option 2: Native Mobile App with Kivy/KivyMD**
+
+#### **✅ Advantages:**
+- ✅ True native performance
+- ✅ App store distribution
+- ✅ Full device access (camera, storage, contacts)
+- ✅ Offline-first architecture
+- ✅ Native UI components
+- ✅ Background processing
+
+#### **📱 Native App Implementation:**
+
+##### 1. Install Dependencies
+```bash
+# Install Kivy and related packages
+pip install kivy kivymd buildozer python-for-android
+
+# For iOS (macOS only)
+pip install kivy-ios
+```
+
+##### 2. Create Mobile App Structure
 ```python
 # mobile_app.py
 from kivy.app import App
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.screenmanager import ScreenManager, Screen
 from kivymd.app import MDApp
-from kivymd.uix.screen import MDScreen
+from kivymd.uix.card import MDCard
 from kivymd.uix.button import MDRaisedButton
 from kivymd.uix.textfield import MDTextField
-from kivymd.uix.label import MDLabel
+from kivymd.uix.list import MDList, OneLineListItem
+import sqlite3
+import json
+from datetime import datetime
 
-class FinanceApp(MDApp):
-    def build(self):
-        screen = MDScreen()
-        
-        # Add expense entry form
-        expense_field = MDTextField(
-            hint_text="Enter expense amount",
-            helper_text="Amount in dollars",
-            mode="rectangle"
-        )
-        
-        submit_button = MDRaisedButton(
-            text="Add Expense",
-            on_release=self.add_expense
-        )
-        
-        screen.add_widget(expense_field)
-        screen.add_widget(submit_button)
-        
-        return screen
+class LoginScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.build_ui()
     
-    def add_expense(self, instance):
-        # Expense logic here
+    def build_ui(self):
+        layout = BoxLayout(orientation='vertical', padding=20, spacing=20)
+        
+        # Title
+        title = MDLabel(
+            text="Finance Analyzer",
+            theme_text_color="Primary",
+            size_hint_y=None,
+            height=dp(50)
+        )
+        
+        # Username field
+        self.username_field = MDTextField(
+            hint_text="Username",
+            icon_right="account",
+            size_hint_x=None,
+            width=dp(300)
+        )
+        
+        # Password field
+        self.password_field = MDTextField(
+            hint_text="Password",
+            password=True,
+            icon_right="key",
+            size_hint_x=None,
+            width=dp(300)
+        )
+        
+        # Login button
+        login_btn = MDRaisedButton(
+            text="Login",
+            on_release=self.authenticate
+        )
+        
+        layout.add_widget(title)
+        layout.add_widget(self.username_field)
+        layout.add_widget(self.password_field)
+        layout.add_widget(login_btn)
+        
+        self.add_widget(layout)
+    
+    def authenticate(self, instance):
+        # Implement authentication logic
+        username = self.username_field.text
+        password = self.password_field.text
+        
+        # Verify credentials (implement with SQLite)
+        if self.verify_user(username, password):
+            self.manager.current = 'main'
+        else:
+            # Show error
+            pass
+
+class ExpenseEntryScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.build_ui()
+    
+    def build_ui(self):
+        # Quick expense entry interface
+        layout = BoxLayout(orientation='vertical', padding=20, spacing=10)
+        
+        # Amount field
+        self.amount_field = MDTextField(
+            hint_text="Amount",
+            input_filter='float'
+        )
+        
+        # Category dropdown
+        self.category_field = MDTextField(
+            hint_text="Category"
+        )
+        
+        # Description field
+        self.description_field = MDTextField(
+            hint_text="Description"
+        )
+        
+        # Save button
+        save_btn = MDRaisedButton(
+            text="Save Expense",
+            on_release=self.save_expense
+        )
+        
+        layout.add_widget(self.amount_field)
+        layout.add_widget(self.category_field)
+        layout.add_widget(self.description_field)
+        layout.add_widget(save_btn)
+        
+        self.add_widget(layout)
+    
+    def save_expense(self, instance):
+        # Save to SQLite database
+        expense_data = {
+            'amount': float(self.amount_field.text),
+            'category': self.category_field.text,
+            'description': self.description_field.text,
+            'date': datetime.now().isoformat(),
+            'user_id': self.get_current_user_id()
+        }
+        self.save_to_database(expense_data)
+
+class ReceiptScanScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.build_ui()
+    
+    def build_ui(self):
+        layout = BoxLayout(orientation='vertical', padding=20, spacing=20)
+        
+        # Camera button
+        camera_btn = MDRaisedButton(
+            text="Take Photo",
+            icon="camera",
+            on_release=self.open_camera
+        )
+        
+        # Gallery button
+        gallery_btn = MDRaisedButton(
+            text="Choose from Gallery",
+            icon="image",
+            on_release=self.open_gallery
+        )
+        
+        layout.add_widget(camera_btn)
+        layout.add_widget(gallery_btn)
+        
+        self.add_widget(layout)
+    
+    def open_camera(self, instance):
+        # Implement camera capture
+        from android.permissions import request_permissions, Permission
+        request_permissions([Permission.CAMERA, Permission.WRITE_EXTERNAL_STORAGE])
+        # Camera implementation
+    
+    def open_gallery(self, instance):
+        # Implement gallery selection
         pass
 
-FinanceApp().run()
+class FinanceAnalyzerApp(MDApp):
+    def build(self):
+        self.theme_cls.theme_style = "Light"
+        self.theme_cls.primary_palette = "Blue"
+        
+        # Screen manager
+        sm = ScreenManager()
+        
+        # Add screens
+        sm.add_widget(LoginScreen(name='login'))
+        sm.add_widget(ExpenseEntryScreen(name='expense'))
+        sm.add_widget(ReceiptScanScreen(name='receipt'))
+        
+        return sm
+    
+    def on_start(self):
+        # Initialize database
+        self.init_database()
+    
+    def init_database(self):
+        # SQLite database setup
+        conn = sqlite3.connect('finance_data.db')
+        cursor = conn.cursor()
+        
+        # Create tables
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY,
+                username TEXT UNIQUE,
+                password_hash TEXT,
+                created_at TIMESTAMP
+            )
+        ''')
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS expenses (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER,
+                amount REAL,
+                category TEXT,
+                description TEXT,
+                date TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+
+if __name__ == '__main__':
+    FinanceAnalyzerApp().run()
 ```
 
-3. **Create buildozer.spec for Android:**
+##### 3. Buildozer Configuration
+Create `buildozer.spec`:
 ```ini
 [app]
 title = Finance Analyzer
 package.name = financeanalyzer
 package.domain = com.yourname.financeanalyzer
-
 source.dir = .
-source.include_exts = py,png,jpg,kv,atlas,json
-
+source.include_exts = py,png,jpg,kv,atlas
 version = 1.0
-requirements = python3,kivy,kivymd,pandas,numpy
+requirements = python3,kivy,kivymd,sqlite3,bcrypt,pandas
+permissions = CAMERA,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,INTERNET
+icon.filename = icon.png
+presplash.filename = presplash.png
 
 [buildozer]
 log_level = 2
 
 [android]
 package = com.yourname.financeanalyzer
-permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,CAMERA
+permissions = CAMERA,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,INTERNET,ACCESS_NETWORK_STATE
+arch = arm64-v8a
+
+[ios]
+ios.package = com.yourname.financeanalyzer
+ios.deployment_target = 11.0
 ```
 
-## 🔒 **Offline Data Storage Solutions**
+##### 4. Build Mobile App
+```bash
+# For Android
+buildozer android debug
 
-### **Option 1: SQLite Database (Recommended)**
+# For release
+buildozer android release
 
+# For iOS (macOS only)
+buildozer ios debug
+```
+
+## 📸 Mobile Upload Implementation
+
+### 1. Camera Integration for Receipts
+
+#### Web-based Camera (PWA)
 ```python
+# Add to app.py
+def mobile_camera_interface():
+    st.markdown("### 📸 Receipt Camera")
+    
+    # Camera input
+    camera_image = st.camera_input("Take a photo of your receipt")
+    
+    if camera_image is not None:
+        # Process the image
+        image = Image.open(camera_image)
+        
+        # Display preview
+        st.image(image, caption="Receipt Preview", width=300)
+        
+        # OCR processing
+        if st.button("Extract Items from Receipt"):
+            with st.spinner("Processing receipt..."):
+                extracted_text = extract_text_from_receipt(image)
+                items = parse_receipt_text(extracted_text)
+                
+                # Display extracted items
+                st.success(f"Extracted {len(items)} items!")
+                for item in items:
+                    st.write(f"• {item['name']}: ${item['price']}")
+```
+
+#### Native Camera (Kivy)
+```python
+# Camera implementation for native app
+from kivy.uix.camera import Camera
+from kivy.uix.button import Button
+
+class CameraScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
+        # Camera widget
+        self.camera = Camera(play=True)
+        
+        # Capture button
+        capture_btn = Button(
+            text='Capture Receipt',
+            size_hint=(1, 0.1),
+            on_press=self.capture_photo
+        )
+        
+        layout = BoxLayout(orientation='vertical')
+        layout.add_widget(self.camera)
+        layout.add_widget(capture_btn)
+        
+        self.add_widget(layout)
+    
+    def capture_photo(self, instance):
+        # Capture and save image
+        self.camera.export_to_png("receipt.png")
+        
+        # Process with OCR
+        self.process_receipt("receipt.png")
+```
+
+### 2. File Upload Optimization
+
+#### Mobile-Optimized File Upload
+```python
+# Enhanced file upload for mobile
+def mobile_file_upload():
+    st.markdown("### 📁 Upload Receipt")
+    
+    # Multiple upload options
+    upload_method = st.radio(
+        "Choose upload method:",
+        ["📷 Take Photo", "📁 Choose File", "🔗 From URL"]
+    )
+    
+    if upload_method == "📷 Take Photo":
+        # Camera input
+        uploaded_file = st.camera_input("Capture receipt")
+    elif upload_method == "📁 Choose File":
+        # File uploader with mobile-friendly settings
+        uploaded_file = st.file_uploader(
+            "Choose receipt image",
+            type=['png', 'jpg', 'jpeg', 'pdf'],
+            accept_multiple_files=False,
+            help="Select image from your device"
+        )
+    elif upload_method == "🔗 From URL":
+        # URL input for cloud storage
+        image_url = st.text_input("Enter image URL")
+        if image_url:
+            # Download and process image from URL
+            pass
+    
+    return uploaded_file
+```
+
+### 3. Touch-Optimized Interface
+
+#### Mobile CSS Optimization
+```python
+# Add to app.py CSS
+mobile_css = """
+<style>
+/* Mobile-specific styles */
+@media (max-width: 768px) {
+    .stButton > button {
+        width: 100%;
+        height: 60px;
+        font-size: 18px;
+        margin: 10px 0;
+        border-radius: 15px;
+    }
+    
+    .stTextInput > div > div > input {
+        font-size: 18px;
+        height: 50px;
+        border-radius: 10px;
+    }
+    
+    .stSelectbox > div > div {
+        font-size: 18px;
+        height: 50px;
+    }
+    
+    .stNumberInput > div > div > input {
+        font-size: 18px;
+        height: 50px;
+    }
+    
+    /* Camera input optimization */
+    .stCameraInput > div {
+        border-radius: 15px;
+        border: 2px dashed #008CBA;
+        padding: 20px;
+        text-align: center;
+    }
+    
+    /* File upload optimization */
+    .stFileUploader > div {
+        border-radius: 15px;
+        border: 2px dashed #008CBA;
+        padding: 30px;
+        text-align: center;
+        font-size: 18px;
+    }
+}
+
+/* Touch-friendly spacing */
+.stExpander {
+    margin: 15px 0;
+}
+
+.stTabs [data-baseweb="tab-list"] {
+    gap: 10px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    padding: 15px 20px;
+    font-size: 16px;
+}
+</style>
+"""
+
+st.markdown(mobile_css, unsafe_allow_html=True)
+```
+
+## 🔒 Offline Data Storage
+
+### SQLite Implementation for Mobile
+```python
+# offline_storage.py
 import sqlite3
 import json
 from datetime import datetime
+import os
 
 class OfflineStorage:
     def __init__(self, db_path="finance_data.db"):
@@ -198,7 +699,8 @@ class OfflineStorage:
                 password_hash TEXT,
                 role TEXT,
                 permissions TEXT,
-                created_at TIMESTAMP
+                created_at TIMESTAMP,
+                last_login TIMESTAMP
             )
         ''')
         
@@ -215,6 +717,7 @@ class OfflineStorage:
                 source TEXT,
                 notes TEXT,
                 created_at TIMESTAMP,
+                synced BOOLEAN DEFAULT 0,
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )
         ''')
@@ -232,6 +735,7 @@ class OfflineStorage:
                 next_due_date DATE,
                 active BOOLEAN,
                 created_at TIMESTAMP,
+                synced BOOLEAN DEFAULT 0,
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )
         ''')
@@ -241,12 +745,26 @@ class OfflineStorage:
             CREATE TABLE IF NOT EXISTS grocery_items (
                 id INTEGER PRIMARY KEY,
                 user_id INTEGER,
-                date DATE,
-                store TEXT,
                 item_name TEXT,
-                category TEXT,
                 price REAL,
+                category TEXT,
+                store_name TEXT,
+                purchase_date DATE,
+                receipt_image_path TEXT,
                 created_at TIMESTAMP,
+                synced BOOLEAN DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
+        # Settings table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS settings (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER,
+                setting_key TEXT,
+                setting_value TEXT,
+                updated_at TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )
         ''')
@@ -259,306 +777,104 @@ class OfflineStorage:
         cursor = conn.cursor()
         
         cursor.execute('''
-            INSERT INTO expenses (user_id, date, description, amount, category, expense_type, source, notes, created_at)
+            INSERT INTO expenses 
+            (user_id, date, description, amount, category, expense_type, source, notes, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
-            user_id, expense_data['date'], expense_data['description'],
-            expense_data['amount'], expense_data['category'], expense_data['type'],
-            expense_data['source'], expense_data.get('notes', ''), datetime.now()
+            user_id,
+            expense_data['date'],
+            expense_data['description'],
+            expense_data['amount'],
+            expense_data['category'],
+            expense_data.get('expense_type', 'Manual'),
+            expense_data.get('source', 'Mobile App'),
+            expense_data.get('notes', ''),
+            datetime.now()
         ))
         
         conn.commit()
         conn.close()
+        
+        return cursor.lastrowid
     
-    def get_user_expenses(self, user_id, start_date=None, end_date=None):
+    def get_user_expenses(self, user_id, limit=100):
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        query = "SELECT * FROM expenses WHERE user_id = ?"
-        params = [user_id]
+        cursor.execute('''
+            SELECT * FROM expenses 
+            WHERE user_id = ? 
+            ORDER BY date DESC 
+            LIMIT ?
+        ''', (user_id, limit))
         
-        if start_date and end_date:
-            query += " AND date BETWEEN ? AND ?"
-            params.extend([start_date, end_date])
-        
-        cursor.execute(query, params)
         expenses = cursor.fetchall()
         conn.close()
         
         return expenses
+    
+    def sync_to_cloud(self, user_id):
+        # Implement cloud sync functionality
+        # Get unsynced data and upload to server
+        pass
 ```
 
-### **Option 2: Encrypted JSON Files**
+## 🚀 Deployment Checklist
 
-```python
-import json
-import os
-from cryptography.fernet import Fernet
+### Pre-Deployment Setup
+- [ ] **Test on multiple devices** (Android, iOS, Desktop)
+- [ ] **Verify offline functionality** works properly
+- [ ] **Test camera and file upload** on mobile browsers
+- [ ] **Validate responsive design** at different screen sizes
+- [ ] **Check authentication flow** on mobile devices
+- [ ] **Test data persistence** across sessions
+- [ ] **Verify PWA installation** process
 
-class EncryptedStorage:
-    def __init__(self, data_dir="user_data"):
-        self.data_dir = data_dir
-        os.makedirs(data_dir, exist_ok=True)
-        self.key = self.load_or_create_key()
-        self.cipher = Fernet(self.key)
-    
-    def load_or_create_key(self):
-        key_file = os.path.join(self.data_dir, "key.key")
-        if os.path.exists(key_file):
-            with open(key_file, "rb") as f:
-                return f.read()
-        else:
-            key = Fernet.generate_key()
-            with open(key_file, "wb") as f:
-                f.write(key)
-            return key
-    
-    def save_user_data(self, username, data):
-        filename = os.path.join(self.data_dir, f"{username}.json")
-        encrypted_data = self.cipher.encrypt(json.dumps(data).encode())
-        
-        with open(filename, "wb") as f:
-            f.write(encrypted_data)
-    
-    def load_user_data(self, username):
-        filename = os.path.join(self.data_dir, f"{username}.json")
-        if not os.path.exists(filename):
-            return {}
-        
-        with open(filename, "rb") as f:
-            encrypted_data = f.read()
-        
-        decrypted_data = self.cipher.decrypt(encrypted_data)
-        return json.loads(decrypted_data.decode())
-```
+### Production Deployment
+- [ ] **Setup HTTPS** (required for PWA)
+- [ ] **Configure domain** and SSL certificate
+- [ ] **Test PWA installation** from mobile browsers
+- [ ] **Setup backup system** for user data
+- [ ] **Monitor performance** and error logs
+- [ ] **Create app icons** in multiple sizes
+- [ ] **Test offline functionality** thoroughly
 
-## 📲 **Deployment Options**
+### App Store Deployment (Native Apps)
+- [ ] **Create developer accounts** (Google Play, App Store)
+- [ ] **Prepare app assets** (icons, screenshots, descriptions)
+- [ ] **Test on physical devices** extensively
+- [ ] **Submit for review** following platform guidelines
+- [ ] **Setup app analytics** and crash reporting
+- [ ] **Plan update strategy** for future releases
 
-### **1. Local Deployment (Recommended for Offline)**
+## 📱 Mobile User Guide
 
-```bash
-# Create standalone executable
-pip install pyinstaller
+### Installing as PWA
+1. **Open browser** on mobile device
+2. **Navigate to** your app URL
+3. **Tap share button** (iOS) or menu (Android)
+4. **Select "Add to Home Screen"**
+5. **App icon appears** on home screen
+6. **Works offline** once installed
 
-# Generate executable
-pyinstaller --onefile --windowed app.py
+### Using Mobile Features
+1. **Quick Expense Entry**: Tap + button for instant expense entry
+2. **Receipt Scanning**: Use camera button to capture receipts
+3. **Voice Input**: Use device voice input for descriptions
+4. **Offline Mode**: All features work without internet
+5. **Sync**: Data syncs when connection restored
 
-# Or create a package
-pyinstaller --onedir --windowed app.py
-```
+### Troubleshooting Mobile
+- **Camera not working**: Check browser permissions
+- **App won't install**: Ensure HTTPS and valid manifest
+- **Offline issues**: Clear browser cache and reinstall
+- **Slow performance**: Check device storage and RAM
+- **Upload failures**: Verify file size and format
 
-### **2. Local Server with Auto-Start**
+---
 
-```python
-# create_desktop_app.py
-import subprocess
-import webbrowser
-import time
-import threading
-from streamlit.web import cli as stcli
-import sys
+**📱 Your Finance Analyzer is now mobile-ready with full offline capabilities!**
 
-def run_streamlit():
-    """Run streamlit app"""
-    sys.argv = ["streamlit", "run", "app.py", "--server.headless", "true", "--server.port", "8521"]
-    stcli.main()
+**🚀 Choose PWA for quick deployment or native app for maximum performance.**
 
-def open_browser():
-    """Open browser after delay"""
-    time.sleep(3)
-    webbrowser.open('http://localhost:8521')
-
-if __name__ == "__main__":
-    # Start streamlit in background
-    streamlit_thread = threading.Thread(target=run_streamlit)
-    streamlit_thread.daemon = True
-    streamlit_thread.start()
-    
-    # Open browser
-    open_browser()
-    
-    # Keep alive
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("Shutting down...")
-```
-
-### **3. Docker Container for Easy Distribution**
-
-```dockerfile
-# Dockerfile
-FROM python:3.9-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
-COPY . .
-
-EXPOSE 8501
-
-CMD ["streamlit", "run", "app.py", "--server.address", "0.0.0.0"]
-```
-
-```bash
-# Build and run
-docker build -t finance-analyzer .
-docker run -p 8501:8501 -v $(pwd)/user_data:/app/user_data finance-analyzer
-```
-
-## 🔐 **Enhanced Security Features**
-
-### **Multi-Factor Authentication**
-
-```python
-import pyotp
-import qrcode
-
-class MFAManager:
-    def generate_secret(self, username):
-        secret = pyotp.random_base32()
-        totp_uri = pyotp.totp.TOTP(secret).provisioning_uri(
-            name=username,
-            issuer_name="Finance Analyzer"
-        )
-        
-        # Generate QR code
-        qr = qrcode.QRCode(version=1, box_size=10, border=5)
-        qr.add_data(totp_uri)
-        qr.make(fit=True)
-        
-        return secret, qr
-    
-    def verify_token(self, secret, token):
-        totp = pyotp.TOTP(secret)
-        return totp.verify(token)
-```
-
-### **Data Backup & Sync**
-
-```python
-import zipfile
-from datetime import datetime
-
-class BackupManager:
-    def create_backup(self, data_dir, backup_dir="backups"):
-        os.makedirs(backup_dir, exist_ok=True)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_file = os.path.join(backup_dir, f"finance_backup_{timestamp}.zip")
-        
-        with zipfile.ZipFile(backup_file, 'w') as zipf:
-            for root, dirs, files in os.walk(data_dir):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    zipf.write(file_path, os.path.relpath(file_path, data_dir))
-        
-        return backup_file
-    
-    def restore_backup(self, backup_file, data_dir):
-        with zipfile.ZipFile(backup_file, 'r') as zipf:
-            zipf.extractall(data_dir)
-```
-
-## 📱 **Mobile-Specific Features**
-
-### **Camera Integration for Receipts**
-
-```python
-# For web-based camera access
-import streamlit as st
-from streamlit_webrtc import webrtc_streamer
-import cv2
-
-def mobile_camera_component():
-    st.markdown("### 📷 Take Photo with Camera")
-    
-    webrtc_ctx = webrtc_streamer(
-        key="receipt-camera",
-        mode=WebRtcMode.SENDONLY,
-        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
-        media_stream_constraints={"video": True, "audio": False},
-        async_processing=True,
-    )
-    
-    if webrtc_ctx.video_frame:
-        img = webrtc_ctx.video_frame.to_ndarray(format="bgr24")
-        return img
-    
-    return None
-```
-
-### **Push Notifications**
-
-```python
-# For PWA push notifications
-def setup_push_notifications():
-    notification_script = """
-    <script>
-    if ('serviceWorker' in navigator && 'PushManager' in window) {
-        navigator.serviceWorker.register('/static/sw.js')
-        .then(function(registration) {
-            return registration.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: 'YOUR_VAPID_KEY'
-            });
-        })
-        .then(function(subscription) {
-            console.log('Push subscription successful');
-        });
-    }
-    
-    function sendNotification(title, body) {
-        if (Notification.permission === 'granted') {
-            new Notification(title, { body: body });
-        }
-    }
-    </script>
-    """
-    
-    st.components.v1.html(notification_script, height=0)
-```
-
-## 🚀 **Quick Start Commands**
-
-```bash
-# 1. Install additional dependencies
-pip install -r requirements.txt
-pip install pyinstaller streamlit-pwa-runtime
-
-# 2. Create standalone app
-pyinstaller --onefile --windowed app.py
-
-# 3. Or run as PWA
-streamlit run app.py --server.headless true
-
-# 4. For mobile development
-pip install kivy kivymd buildozer
-buildozer android debug
-```
-
-## 💡 **Best Practices**
-
-1. **Data Security:** Always encrypt sensitive data
-2. **Offline Sync:** Implement data synchronization when online
-3. **Error Handling:** Graceful handling of network failures
-4. **Battery Optimization:** Minimize background processing
-5. **Storage Management:** Implement data cleanup and archiving
-6. **User Experience:** Touch-friendly interfaces and gestures
-7. **Performance:** Optimize for mobile CPU and memory constraints
-
-## 📞 **Support & Customization**
-
-For custom mobile app development or enterprise deployment, this framework provides the foundation for:
-
-- Custom branding and themes
-- Enterprise SSO integration
-- Advanced reporting and analytics
-- Multi-tenant architecture
-- Cloud sync capabilities
-- White-label solutions
-
-Your Finance Analyzer is now ready to be deployed as a secure, offline-capable mobile application! 🎉 
+For technical support or mobile-specific issues, create a GitHub issue with device details. 

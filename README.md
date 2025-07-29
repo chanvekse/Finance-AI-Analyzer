@@ -1,103 +1,227 @@
-# 💰 Bank Statement Analyzer
+# 💰 Bank Statement Analyzer - Enterprise Edition
 
-A comprehensive financial analysis tool that provides insights into your spending patterns, generates visualizations, and creates detailed PDF reports.
+A comprehensive, multi-user financial analysis platform with advanced features including user management, persistent data storage, subscription tracking, receipt scanning, SMS alerts, and professional reporting.
 
-## 🚀 Features
+## 🌟 Enterprise Features
 
-### Core Analysis
-- ✅ **CSV Data Processing**: Load and validate bank statement CSV files
-- ✅ **Manual Expense Entry**: Quick expense tracking with category dropdowns and auto-date
-- ✅ **Grocery Receipt Scanning**: OCR-powered receipt text extraction (optional)
-- ✅ **Subscription Management**: Track recurring payments with due date alerts
-- ✅ **Smart Categorization**: Automatically categorize transactions using keyword rules
-- ✅ **Financial Metrics**: Calculate income, expenses, savings, and savings rate
-- ✅ **Password Protection**: Secure user authentication and role management
+### 🔐 User Management & Security
+- **Multi-user support** with role-based access control
+- **Secure authentication** with bcrypt password hashing
+- **Admin dashboard** for user and system management
+- **User-specific data isolation** - each user has private data storage
+- **Test user mode** for safe feature testing without data pollution
 
-### Visualizations
-- 📊 **Category Spending**: Bar charts showing spending by category
-- 📈 **Monthly Trends**: Line charts tracking income, expenses, and savings over time
-- 🥧 **Pie Charts**: Spending distribution visualization
-- 📉 **Daily Spending Trends**: Track daily spending patterns
+### 💾 Persistent Data Storage
+- **Automatic data persistence** for all users (except test user)
+- **User-specific file storage** - each user's data saved separately
+- **Session persistence** across app restarts
+- **Admin data management** with system-wide controls
+- **Data backup and restore** capabilities
 
-### Reports & Insights
-- 💡 **Smart Insights**: AI-powered financial recommendations
-- 📄 **PDF Reports**: Professional PDF summaries with embedded charts
-- 🎯 **Top Categories**: Identify biggest spending areas
-- 📈 **Trend Analysis**: Understand financial trajectory
+### ⚡ Quick Expense Management
+- **Instant expense entry** with 19+ predefined categories
+- **Auto-date functionality** for quick daily expense tracking
+- **Real-time integration** into all charts and reports
+- **Bulk expense management** with edit/delete capabilities
 
-## 🖥️ Two Ways to Use
+### 🛒 Advanced Grocery Tracking
+- **Receipt OCR scanning** with automatic text extraction
+- **Item categorization** (Snacks, Dairy & Milk, Vegetables, etc.)
+- **Year-to-Date spending** tracking by grocery category
+- **Mobile-friendly** receipt upload for on-the-go tracking
 
-### 1. Command Line Interface (CLI)
+### 📋 Subscription & Bill Management
+- **Manual subscription entry** with due date tracking
+- **SMS alert system** via Twilio API (1-day advance notice)
+- **Recurring payment calendar** visualization
+- **Payment history tracking** and analytics
+
+### 📊 Professional Analytics & Reporting
+- **Interactive charts** with zoom, pan, and hover details
+- **PDF reports** with embedded visualizations
+- **Excel exports** with multi-sheet analysis
+- **YTD breakdowns** by category and type
+- **Financial health insights** and recommendations
+
+## 🚀 Getting Started
+
+### 1. Installation
+
 ```bash
-python main.py
-```
-**Features:**
-- Interactive terminal interface
-- Complete analysis pipeline
-- Matplotlib visualizations
-- PDF report generation
-- Sample data creation
+# Clone the repository
+git clone https://github.com/chanvekse/Finance-AI-Analyzer.git
+cd Finance-AI-Analyzer
 
-### 2. Web Application (Streamlit)
+# Install core dependencies
+pip install -r requirements.txt
+
+# Optional: Install OCR dependencies for receipt scanning
+pip install -r requirements-ocr.txt
+```
+
+### 2. Launch the Application
+
 ```bash
 streamlit run app.py
 ```
-**Features:**
-- Modern web interface
-- Drag-and-drop file upload
-- Interactive Plotly charts
-- Real-time analysis
-- PDF download functionality
 
-## 📦 Installation
+### 3. Login & First Time Setup
 
-1. **Clone or download** this project
-2. **Install core dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. **Optional: Install OCR dependencies for receipt scanning:**
-   ```bash
-   pip install -r requirements-ocr.txt
-   ```
+Navigate to `http://localhost:8501` and login with:
 
-### Core Dependencies
-```
-pandas>=1.5.0          # Data processing
-matplotlib>=3.5.0      # Static charts
-seaborn>=0.11.0         # Statistical visualizations  
+#### 👑 Admin Account (Full Access)
+- **Username:** `admin`
+- **Password:** `admin123`
+- **Features:** User management, system administration, persistent data
+
+#### 🧪 Test Account (Safe Testing)
+- **Username:** `test`
+- **Password:** `test123`
+- **Features:** All functionality, data clears on logout
+
+## 📦 Dependencies
+
+### Core Requirements (required)
+```txt
+pandas>=1.5.0          # Data processing and analysis
+matplotlib>=3.5.0      # Static chart generation
+seaborn>=0.11.0         # Statistical visualizations
 numpy>=1.21.0           # Numerical computations
-fpdf2>=2.7.0           # PDF generation
-streamlit>=1.28.0      # Web application
+fpdf2>=2.7.0           # PDF report generation
+streamlit>=1.28.0      # Web application framework
 plotly>=5.15.0         # Interactive charts
-openpyxl>=3.0.0        # Excel export
+openpyxl>=3.0.0        # Excel export functionality
 twilio>=8.5.0          # SMS notifications
-bcrypt>=4.0.0          # Password hashing
+bcrypt>=4.0.0          # Secure password hashing
 ```
 
-### Optional OCR Dependencies
-```
+### Optional OCR Requirements (for receipt scanning)
+```txt
 pytesseract>=0.3.10    # OCR text extraction
-opencv-python>=4.8.0   # Image processing
+opencv-python>=4.8.0   # Image preprocessing
 pillow>=9.0.0          # Image handling
 ```
 
-**Note:** For receipt OCR scanning to work, you also need to install Tesseract OCR:
+**Tesseract OCR Installation:**
 - **Windows:** Download from [Tesseract Wiki](https://github.com/UB-Mannheim/tesseract/wiki)
 - **macOS:** `brew install tesseract`
 - **Ubuntu/Debian:** `sudo apt install tesseract-ocr`
 
-## 📊 CSV File Format
+## 🎯 User Guide
 
-Your bank statement CSV must have these columns:
+### 💾 Admin Users
+1. **Create new users** through User Management in sidebar
+2. **Manage system data** with admin-only controls
+3. **Monitor user activity** and data usage
+4. **Reset system** or clear individual user data
+5. **All data persists permanently** across sessions
 
+### 🧪 Test Users
+1. **Safely test all features** without affecting real data
+2. **Add sample expenses** and subscriptions
+3. **Try receipt scanning** and SMS alerts
+4. **Export test reports** in PDF/Excel
+5. **Data automatically clears** on logout
+
+### 👥 Regular Users
+1. **Auto-persistence enabled** - data saves permanently
+2. **Private data storage** - isolated from other users
+3. **Full feature access** except admin functions
+4. **Seamless login experience** with data auto-loading
+
+## 🔧 Core Features
+
+### ⚡ Quick Expense Entry
+- **Top-priority placement** for immediate access
+- **19 expense categories:** Groceries, Dining, Transportation, etc.
+- **Auto-date to today** for rapid entry
+- **Amount and notes** fields with validation
+- **Instant integration** into all reports and charts
+
+### 📊 Financial Analytics
+- **Category spending charts** with interactive hover data
+- **Monthly trends** showing income, expenses, savings rate
+- **YTD breakdowns** by category and spending type
+- **Financial health scoring** with personalized insights
+
+### 🛒 Grocery Management
+- **Receipt upload** with OCR text extraction
+- **Manual item entry** with auto-categorization
+- **Category tracking:** Snacks, Dairy, Vegetables, etc.
+- **YTD spending analysis** by grocery category
+- **Mobile-friendly interface** for phone uploads
+
+### 📋 Subscription Tracking
+- **Manual subscription entry** with service name, amount, due date
+- **SMS alerts** 1 day before due date (Twilio integration)
+- **Next due date calculation** with automatic scheduling
+- **Payment history** and recurring expense analysis
+
+### 📄 Professional Reporting
+- **PDF reports** with financial summary and embedded charts
+- **Excel exports** with multiple analysis sheets
+- **Custom date filtering** for specific time periods
+- **Professional formatting** suitable for business use
+
+## 📱 Mobile & Upload Features
+
+### Mobile Receipt Scanning
+1. **Take photo** of grocery receipt on mobile device
+2. **Upload via web interface** (works on mobile browsers)
+3. **Automatic OCR extraction** of items and prices
+4. **Manual review and editing** of extracted data
+5. **Instant categorization** and YTD tracking
+
+### Mobile Expense Entry
+1. **Responsive design** works on all devices
+2. **Quick expense entry** optimized for mobile
+3. **Touch-friendly interface** with large buttons
+4. **Auto-date functionality** for on-the-go tracking
+
+### Offline Capabilities
+- **See [MOBILE_APP_GUIDE.md](MOBILE_APP_GUIDE.md)** for complete mobile deployment guide
+- **PWA conversion** instructions for offline use
+- **Native app development** with Kivy/KivyMD
+- **SQLite offline storage** implementation
+
+## 🗃️ Data Management
+
+### File Structure
+```
+user_data/
+├── users.json                          # User credentials (secure)
+├── admin_settings.json                 # Admin preferences
+├── admin_manual_expenses.json         # Admin's expenses
+├── admin_manual_subscriptions.json    # Admin's subscriptions
+├── admin_grocery_items.json           # Admin's grocery data
+├── [user]_manual_expenses.json        # User-specific expenses
+├── [user]_manual_subscriptions.json   # User-specific subscriptions
+└── [user]_grocery_items.json          # User-specific grocery data
+```
+
+### Admin Data Controls
+- **🧹 Clear All User Data:** Remove all expenses/subscriptions (keep accounts)
+- **🗑️ Complete System Reset:** Fresh start with only admin/test users
+- **👤 Individual User Management:** Clear specific user's data
+- **📊 System Status:** Monitor users and data file counts
+
+### Data Privacy & Security
+- **Local storage only** - no cloud uploads
+- **User isolation** - each user sees only their data
+- **Encrypted passwords** with bcrypt hashing
+- **Git-ignored sensitive files** - no accidental commits
+- **Admin-only system controls** - protected operations
+
+## 🔧 CSV Data Import
+
+### Required Format
 | Column | Description | Example |
 |--------|-------------|---------|
 | `Date` | Transaction date | 2024-01-01 |
 | `Description` | Transaction description | WALMART SUPERCENTER |
 | `Amount` | Transaction amount | -85.50 |
 
-### Sample CSV:
+### Sample CSV
 ```csv
 Date,Description,Amount
 2024-01-01,PAYROLL DEPOSIT,3500.00
@@ -106,175 +230,126 @@ Date,Description,Amount
 2024-01-05,SHELL GAS STATION,-45.20
 ```
 
-## 🎯 Category Rules
+## 🎨 Customization
 
-Transactions are automatically categorized using these keyword rules:
-
-- **Groceries**: walmart, kroger, trader joe, target
-- **Entertainment**: netflix, youtube, apple music  
-- **Dining**: starbucks, chick-fil-a
-- **Transportation**: uber, lyft, shell, gas
-- **Credit Card/Transfers**: chase, zelle
-- **Bills**: rent, insurance, electricity, internet
-- **Income**: salary, deposit
-- **Uncategorized**: Everything else
-
-## 🚀 Quick Start
-
-### Web Application (Recommended)
-```bash
-streamlit run app.py
+### Adding Categories
+Edit the `category_keywords` dictionary in `app.py`:
+```python
+self.category_keywords = {
+    'Custom Category': ['keyword1', 'keyword2'],
+    # ... existing categories
+}
 ```
-1. Open your browser to `http://localhost:8501`
-2. **Login** with default credentials:
-   - Username: `admin`
-   - Password: `admin123`
-   - ⚠️ **Change the password after first login**
-3. Upload CSV files or enter expenses manually
-4. Track groceries with receipt scanning
-5. Set up subscription alerts
-6. Generate comprehensive reports
 
-### Option 2: Command Line
-```bash
-python main.py
-```
-1. Enter your CSV file path (or press Enter for sample data)
-2. View terminal output analysis
-3. Check generated visualizations
-4. Open `finance_summary.pdf`
-
-## 📈 Analysis Output
-
-### Metrics Calculated
-- **Total Income**: Sum of positive amounts
-- **Total Expenses**: Sum of negative amounts (absolute)
-- **Net Savings**: Income - Expenses
-- **Savings Rate**: (Savings / Income) × 100
-- **Financial Health Score**: 0-100 comprehensive rating
-
-### Visualizations Generated
-1. **Category Bar Chart**: Horizontal bar chart of spending by category
-2. **Monthly Trends**: Line chart showing income/expenses/savings over time
-3. **Pie Chart**: Spending distribution by category
-4. **Daily Trends**: Daily spending pattern analysis
-
-### Reports Generated
-- **Terminal Output**: Comprehensive text analysis
-- **PNG Charts**: High-resolution chart images
-- **PDF Report**: Professional summary document
-- **Interactive Charts**: Web-based visualizations (Streamlit only)
-
-## 🔧 Advanced Features
-
-### Monthly Comparison Analysis
-- Compares current month vs previous month
-- Shows percentage changes in income, expenses, savings
-- Identifies categories with biggest changes
-- Provides trend-based recommendations
-
-### Financial Health Scoring
-- **Savings Rate** (40 points): Based on percentage saved
-- **Spending Distribution** (30 points): Balance across categories  
-- **Emergency Fund** (30 points): Estimated fund adequacy
-
-### Smart Insights
-- Personalized recommendations based on spending patterns
-- Category-specific advice
-- Trend analysis and alerts
-- Financial goal suggestions
-
-## 📁 Generated Files
-
-After running analysis, you'll find:
-- `category_pie.png`: Pie chart visualization
-- `finance_summary.pdf`: Comprehensive PDF report
-- Sample CSV files for testing
+### SMS Configuration
+1. **Sign up for Twilio** account
+2. **Get Account SID, Auth Token, and Phone Number**
+3. **Configure in SMS settings** within the app
+4. **Test alerts** with subscription due dates
 
 ## 🛠️ Troubleshooting
 
 ### Common Issues
 
-**"Module not found" errors:**
+**Authentication Problems:**
+- Clear browser cookies and retry login
+- Ensure correct username/password format
+- Check for caps lock and spelling
+
+**OCR Not Working:**
+- Install `requirements-ocr.txt` dependencies
+- Install Tesseract OCR on your system
+- Ensure images are clear and well-lit
+
+**Data Not Persisting:**
+- Login as admin (not test user)
+- Check "Data Persistence" status in sidebar
+- Verify file permissions in user_data directory
+
+**SMS Alerts Failing:**
+- Verify Twilio credentials in settings
+- Check phone number format (+1234567890)
+- Ensure Twilio account has sufficient credits
+
+### File Permissions
 ```bash
-pip install -r requirements.txt
+# Ensure user_data directory is writable
+chmod 755 user_data/
+chmod 644 user_data/*.json
 ```
 
-**CSV format errors:**
-- Ensure columns are named exactly: Date, Description, Amount
-- Check date format (YYYY-MM-DD recommended)
-- Verify amounts are numeric (negative for expenses)
+## 📈 Advanced Analytics
 
-**Streamlit won't start:**
-```bash
-streamlit --version
-streamlit run app.py --server.port 8502
-```
+### Financial Metrics
+- **Total Income/Expenses/Savings**
+- **Savings Rate Percentage**
+- **Category-wise spending breakdown**
+- **Monthly trend analysis**
+- **YTD comparisons and projections**
 
-### File Encoding Issues
-If you see encoding errors:
-```python
-# The app automatically handles common encodings
-# Try saving your CSV as UTF-8 in Excel/Google Sheets
-```
+### Smart Insights
+- **Spending pattern analysis**
+- **Category overspending alerts**
+- **Savings rate improvements**
+- **Budget recommendations**
+- **Recurring expense optimization**
 
-## 🎨 Customization
+## 🔒 Security Best Practices
 
-### Adding New Categories
-Edit the `category_keywords` dictionary in either file:
-```python
-self.category_keywords = {
-    'Your Category': ['keyword1', 'keyword2'],
-    # ... existing categories
-}
-```
+### For Production Use
+1. **Change default passwords** immediately
+2. **Use strong passwords** for all accounts  
+3. **Regular data backups** using admin controls
+4. **Monitor user activity** through admin dashboard
+5. **Keep dependencies updated** with `pip install -U`
 
-### Changing Analysis Period
-The tool automatically detects date ranges, but you can filter data:
-```python
-df = df[df['Date'] >= '2024-01-01']  # Filter to specific date
-```
+### Data Protection
+- **Local processing only** - no internet required for core features
+- **Encrypted password storage** with bcrypt
+- **User data isolation** - private file storage
+- **Git exclusion** of sensitive data files
 
-## 📊 Sample Data
+## 🚀 Future Roadmap
 
-Both applications include sample data generators for testing. The sample includes:
-- Multi-month transactions (January & February 2024)
-- Various categories and transaction types
-- Realistic spending patterns for demonstration
+### Planned Features
+- [ ] **Budget tracking** with spending limits and alerts
+- [ ] **Goal setting** and progress tracking
+- [ ] **Bank API integration** for automatic data sync
+- [ ] **Machine learning** category prediction
+- [ ] **Advanced reporting** with custom date ranges
+- [ ] **Multi-currency support** for international users
+- [ ] **Team collaboration** features for shared accounts
 
-## 🔒 Privacy & Security
+### Mobile Development
+- [ ] **Progressive Web App (PWA)** for offline mobile use
+- [ ] **Native iOS/Android** apps with sync capabilities
+- [ ] **Camera integration** for instant receipt capture
+- [ ] **Push notifications** for subscription alerts
 
-- ✅ **Local Processing**: All analysis runs on your computer
-- ✅ **No Data Upload**: Your financial data never leaves your device
-- ✅ **No Internet Required**: Works completely offline
-- ✅ **Open Source**: Full transparency in code
+## 📞 Support & Contributing
 
-## 🤝 Contributing
+### Getting Help
+1. **Check documentation** in `MOBILE_APP_GUIDE.md`
+2. **Review troubleshooting** section above
+3. **Create GitHub issue** for bugs or feature requests
+4. **Contribute improvements** via pull requests
 
-Want to improve the analyzer? Here are some ideas:
-- Add new visualization types
-- Improve categorization rules  
-- Add more financial metrics
-- Enhance PDF reports
-- Create mobile-friendly interface
+### Contributing
+We welcome contributions! Areas for improvement:
+- **New visualization types** and chart options
+- **Enhanced categorization** rules and algorithms
+- **Mobile UI improvements** and optimizations
+- **Additional export formats** and report templates
+- **Integration capabilities** with financial services
 
 ## 📜 License
 
-This project is open source. Feel free to use, modify, and distribute.
-
-## 🚀 Future Enhancements
-
-Planned features:
-- [ ] Budget tracking and alerts
-- [ ] Goal setting and progress tracking
-- [ ] Multi-account analysis
-- [ ] Integration with bank APIs
-- [ ] Machine learning categorization
-- [ ] Expense forecasting
-- [ ] Mobile app version
+This project is open source under the MIT License. Feel free to use, modify, and distribute.
 
 ---
 
-**Built with ❤️ for better financial awareness**
+**🏆 Built for comprehensive financial management with enterprise-grade features**
 
-For support or questions, check the code comments or create an issue! 
+**💡 Perfect for individuals, families, and small businesses tracking expenses and financial goals**
+
+For questions, support, or feature requests, visit our [GitHub repository](https://github.com/chanvekse/Finance-AI-Analyzer). 

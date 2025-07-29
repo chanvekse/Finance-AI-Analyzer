@@ -2900,6 +2900,146 @@ class StreamlitBankAnalyzer:
         except Exception as e:
             st.error(f"Error saving settings for {username}: {e}")
     
+    def admin_data_management_interface(self):
+        """Admin-only interface for system-wide data management."""
+        if not ('user_permissions' in st.session_state and 'admin' in st.session_state.user_permissions):
+            st.error("❌ Access denied. Admin privileges required.")
+            return
+        
+        st.markdown("**🗑️ System Data Management**")
+        st.warning("⚠️ **Admin Only**: These actions affect all users' data!")
+        
+        # Show system data status
+        all_users = list(st.session_state.get('users', {}).keys())
+        total_data_files = 0
+        
+        for user in all_users:
+            for data_type in ['manual_expenses', 'manual_subscriptions', 'grocery_items', 'settings']:
+                user_file = self.data_dir / f"{user}_{data_type}.json"
+                if user_file.exists():
+                    total_data_files += 1
+        
+        st.info(f"📊 **System Status:**\n- {len(all_users)} total users\n- {total_data_files} data files on disk")
+        
+        # Clear all user data (keep user accounts)
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("🧹 Clear All User Data", help="Remove all expenses, subscriptions, and grocery data for ALL users (keeps user accounts)"):
+                if st.button("⚠️ Confirm: Clear ALL User Data", type="secondary"):
+                    self.clear_all_users_data()
+                    st.success("✅ All user data cleared! User accounts preserved.")
+                    st.rerun()
+        
+        with col2:
+            if st.button("🗑️ Reset Entire System", help="Remove ALL data including user accounts (fresh start)", type="secondary"):
+                if st.button("⚠️ CONFIRM: Complete System Reset", type="secondary"):
+                    self.reset_entire_system()
+                    st.success("✅ Complete system reset! Starting fresh.")
+                    st.rerun()
+        
+        # Individual user data management
+        st.markdown("**👤 Individual User Data Management**")
+        
+        non_admin_users = [u for u in all_users if u not in ['admin', 'test']]
+        if non_admin_users:
+            selected_user = st.selectbox("Select user to manage", non_admin_users)
+            
+            if selected_user:
+                user_data_count = 0
+                for data_type in ['manual_expenses', 'manual_subscriptions', 'grocery_items']:
+                    user_file = self.data_dir / f"{selected_user}_{data_type}.json"
+                    if user_file.exists():
+                        try:
+                            with open(user_file, 'r') as f:
+                                data = json.load(f)
+                                user_data_count += len(data) if isinstance(data, list) else 1
+                        except:
+                            pass
+                
+                st.info(f"📊 **{selected_user}**: {user_data_count} data items")
+                
+                if st.button(f"🗑️ Clear {selected_user}'s Data"):
+                    if st.button(f"⚠️ Confirm: Clear {selected_user}'s Data"):
+                        self.clear_specific_user_data(selected_user)
+                        st.success(f"✅ {selected_user}'s data cleared!")
+                        st.rerun()
+        else:
+            st.info("No regular users to manage (only admin/test exist)")
+    
+    def clear_all_users_data(self):
+        """Clear all user data files while preserving user accounts."""
+        try:
+            data_types = ['manual_expenses', 'manual_subscriptions', 'grocery_items', 'settings']
+            users = list(st.session_state.get('users', {}).keys())
+            
+            for user in users:
+                for data_type in data_types:
+                    user_file = self.data_dir / f"{user}_{data_type}.json"
+                    if user_file.exists():
+                        user_file.unlink()
+            
+            # Clear session state for all users
+            for key in ['manual_expenses', 'manual_subscriptions', 'grocery_items']:
+                if key in st.session_state:
+                    st.session_state[key] = []
+                    
+        except Exception as e:
+            st.error(f"Error clearing user data: {e}")
+    
+    def clear_specific_user_data(self, username):
+        """Clear data for a specific user."""
+        try:
+            data_types = ['manual_expenses', 'manual_subscriptions', 'grocery_items', 'settings']
+            
+            for data_type in data_types:
+                user_file = self.data_dir / f"{username}_{data_type}.json"
+                if user_file.exists():
+                    user_file.unlink()
+                    
+        except Exception as e:
+            st.error(f"Error clearing data for {username}: {e}")
+    
+    def reset_entire_system(self):
+        """Complete system reset - remove all data and users except admin."""
+        try:
+            # Remove all data files
+            for file_path in self.data_dir.glob("*.json"):
+                if file_path.name != "users.json":  # Keep users.json for now
+                    file_path.unlink()
+            
+            # Reset users to just admin and test
+            admin_password = bcrypt.hashpw("admin123".encode('utf-8'), bcrypt.gensalt())
+            test_password = bcrypt.hashpw("test123".encode('utf-8'), bcrypt.gensalt())
+            
+            fresh_users = {
+                'admin': {
+                    'password_hash': admin_password,
+                    'role': 'admin',
+                    'created_at': datetime.now(),
+                    'permissions': ['read', 'write', 'admin'],
+                    'is_test_user': False
+                },
+                'test': {
+                    'password_hash': test_password,
+                    'role': 'user',
+                    'created_at': datetime.now(),
+                    'permissions': ['read', 'write'],
+                    'is_test_user': True
+                }
+            }
+            
+            st.session_state.users = fresh_users
+            self.save_users_to_file()
+            
+            # Clear session state
+            for key in ['manual_expenses', 'manual_subscriptions', 'grocery_items']:
+                if key in st.session_state:
+                    st.session_state[key] = []
+                    
+        except Exception as e:
+            st.error(f"Error during system reset: {e}")
+    
     def user_management_interface(self):
         """Interface for managing users (admin only)."""
         if not ('user_permissions' in st.session_state and 'admin' in st.session_state.user_permissions):
@@ -3525,6 +3665,9 @@ def main():
         if 'admin' in st.session_state.user_permissions:
             with st.sidebar.expander("👥 User Management"):
                 analyzer.user_management_interface()
+            
+            with st.sidebar.expander("🗑️ System Data Management (Admin Only)"):
+                analyzer.admin_data_management_interface()
         
         # Data persistence settings
         analyzer.setup_persistence_settings()
