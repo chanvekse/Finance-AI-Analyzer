@@ -302,23 +302,25 @@ class StreamlitBankAnalyzer:
             },
             xaxis_title="Amount ($)",
             yaxis_title="Category",
-            height=450,
+            height=500,  # Increased height for better spacing
             showlegend=False,
             xaxis_tickformat='$,.0f',
             template='plotly_white',
             hovermode='closest',
             # Enable zooming and panning
             xaxis=dict(fixedrange=False),
-            yaxis=dict(fixedrange=False)
+            yaxis=dict(fixedrange=False),
+            # Add margins to prevent text overlap
+            margin=dict(l=120, r=20, t=80, b=60)
         )
         
-        # Add annotations for better interactivity
+        # Add annotations for better interactivity with proper spacing
         fig.add_annotation(
-            text="💡 Hover over bars for detailed statistics<br>🔍 Use toolbar to zoom and pan",
+            text="💡 Hover for detailed stats | 🔍 Use toolbar to zoom/pan",
             xref="paper", yref="paper",
-            x=1, y=1.15, xanchor="right", yanchor="top",
+            x=1, y=-0.15, xanchor="right", yanchor="top",
             showarrow=False,
-            font=dict(size=10, color="gray")
+            font=dict(size=9, color="gray")
         )
         
         return fig
@@ -434,19 +436,21 @@ class StreamlitBankAnalyzer:
                 'xanchor': 'center',
                 'font': {'size': 16}
             },
-            height=500,
+            height=550,  # Increased height for better spacing
             hovermode='x unified',
             template='plotly_white',
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1
+                y=-0.25,  # Moved legend below chart
+                xanchor="center",
+                x=0.5
             ),
             # Enable zooming and panning
             xaxis=dict(fixedrange=False),
-            yaxis=dict(fixedrange=False)
+            yaxis=dict(fixedrange=False),
+            # Add margins to prevent overlap
+            margin=dict(l=60, r=60, t=80, b=120)
         )
         
         # Set y-axes titles
@@ -454,13 +458,13 @@ class StreamlitBankAnalyzer:
         fig.update_yaxes(title_text="Amount ($)", tickformat='$,.0f', secondary_y=False)
         fig.update_yaxes(title_text="Savings Rate (%)", tickformat='.1f', secondary_y=True)
         
-        # Add annotation
+        # Add annotation with better positioning
         fig.add_annotation(
-            text="💡 Click legend items to toggle visibility<br>🔍 Use toolbar for zoom, pan, and selection",
+            text="💡 Click legend to toggle | 🔍 Toolbar for zoom/pan/select",
             xref="paper", yref="paper",
-            x=0, y=1.15, xanchor="left", yanchor="top",
+            x=0.5, y=-0.35, xanchor="center", yanchor="top",
             showarrow=False,
-            font=dict(size=10, color="gray")
+            font=dict(size=9, color="gray")
         )
         
         return fig
@@ -492,13 +496,15 @@ class StreamlitBankAnalyzer:
         fig.add_trace(go.Pie(
             labels=category_stats.index,
             values=category_stats['Total'],
-            hole=0.4,  # Create a donut chart for better visual appeal
+            hole=0.3,  # Reduced hole size for better text space
             marker=dict(
                 colors=colors,
                 line=dict(color='white', width=2)
             ),
             textinfo='label+percent',
             textposition='auto',
+            textfont=dict(size=11),  # Slightly larger text
+            insidetextorientation='radial',  # Better text orientation
             hovertemplate=(
                 "<b>%{label}</b><br>" +
                 "Amount: $%{value:,.2f}<br>" +
@@ -511,7 +517,8 @@ class StreamlitBankAnalyzer:
             customdata=category_stats[['Count', 'Average', 'Most_Common']].values,
             name="Category Spending",
             # Add pull effect for largest slice
-            pull=[0.1 if i == 0 else 0 for i in range(len(category_stats))]
+            pull=[0.05 if i == 0 else 0 for i in range(len(category_stats))],  # Reduced pull
+            sort=False  # Keep original order to prevent label jumping
         ))
         
         # Add center text for donut chart
@@ -531,7 +538,7 @@ class StreamlitBankAnalyzer:
                 'xanchor': 'center',
                 'font': {'size': 16}
             },
-            height=450,
+            height=500,  # Increased height
             template='plotly_white',
             showlegend=True,
             legend=dict(
@@ -539,17 +546,20 @@ class StreamlitBankAnalyzer:
                 yanchor="middle",
                 y=0.5,
                 xanchor="left",
-                x=1.01
+                x=1.02,
+                font=dict(size=10)  # Smaller legend font
             ),
+            # Add margins for better spacing
+            margin=dict(l=20, r=150, t=80, b=80),
             # Enable interactivity
             annotations=[
                 dict(
-                    text="💡 Click slices to highlight<br>🔍 Hover for detailed info",
-                    x=0, y=1.15,
+                    text="💡 Click slices to highlight | 🔍 Hover for details",
+                    x=0.5, y=-0.15,
                     xref="paper", yref="paper",
-                    xanchor="left", yanchor="top",
+                    xanchor="center", yanchor="top",
                     showarrow=False,
-                    font=dict(size=10, color="gray")
+                    font=dict(size=9, color="gray")
                 )
             ]
         )
@@ -611,16 +621,18 @@ class StreamlitBankAnalyzer:
             # Add mean line for income
             fig.add_vline(
                 x=income_stats['mean'], line_dash="dash", line_color="darkgreen",
-                annotation_text=f"Mean: ${income_stats['mean']:,.0f}",
-                annotation_position="top",
+                annotation_text=f"μ: ${income_stats['mean']:,.0f}",
+                annotation_position="top right",
+                annotation_font_size=9,
                 row=1, col=1
             )
             
             # Add median line for income
             fig.add_vline(
                 x=income_stats['median'], line_dash="dot", line_color="green",
-                annotation_text=f"Median: ${income_stats['median']:,.0f}",
-                annotation_position="bottom",
+                annotation_text=f"M: ${income_stats['median']:,.0f}",
+                annotation_position="bottom right",
+                annotation_font_size=9,
                 row=1, col=1
             )
         
@@ -647,16 +659,18 @@ class StreamlitBankAnalyzer:
             # Add mean line for expenses
             fig.add_vline(
                 x=expense_stats['mean'], line_dash="dash", line_color="darkred",
-                annotation_text=f"Mean: ${expense_stats['mean']:,.0f}",
-                annotation_position="top",
+                annotation_text=f"μ: ${expense_stats['mean']:,.0f}",
+                annotation_position="top right",
+                annotation_font_size=9,
                 row=2, col=1
             )
             
             # Add median line for expenses
             fig.add_vline(
                 x=expense_stats['median'], line_dash="dot", line_color="red",
-                annotation_text=f"Median: ${expense_stats['median']:,.0f}",
-                annotation_position="bottom",
+                annotation_text=f"M: ${expense_stats['median']:,.0f}",
+                annotation_position="bottom right",
+                annotation_font_size=9,
                 row=2, col=1
             )
         
@@ -668,14 +682,16 @@ class StreamlitBankAnalyzer:
                 'xanchor': 'center',
                 'font': {'size': 16, 'color': '#1f2937'}
             },
-            height=700,
+            height=750,  # Increased height for better spacing
             showlegend=False,
             template='plotly_white',
             # Enable zooming and panning
             xaxis=dict(fixedrange=False),
             yaxis=dict(fixedrange=False),
             xaxis2=dict(fixedrange=False),
-            yaxis2=dict(fixedrange=False)
+            yaxis2=dict(fixedrange=False),
+            # Add margins to prevent overlap
+            margin=dict(l=60, r=60, t=120, b=120)
         )
         
         # Update x-axes
@@ -686,24 +702,32 @@ class StreamlitBankAnalyzer:
         fig.update_yaxes(title_text="Frequency", row=1, col=1)
         fig.update_yaxes(title_text="Frequency", row=2, col=1)
         
-        # Add comprehensive annotation
+        # Add comprehensive annotation with better formatting
         stats_text = (
-            f"📈 Income Stats: Mean=${income_stats['mean']:,.0f}, "
-            f"Median=${income_stats['median']:,.0f}, σ=${income_stats['std']:,.0f}<br>"
-            f"💸 Expense Stats: Mean=${expense_stats['mean']:,.0f}, "
-            f"Median=${expense_stats['median']:,.0f}, σ=${expense_stats['std']:,.0f}<br>"
-            f"💡 Dashed=Mean, Dotted=Median | 🔍 Use toolbar for zoom/pan"
+            f"📈 Income: μ=${income_stats['mean']:,.0f}, M=${income_stats['median']:,.0f}, "
+            f"σ=${income_stats['std']:,.0f} | "
+            f"💸 Expense: μ=${expense_stats['mean']:,.0f}, M=${expense_stats['median']:,.0f}, "
+            f"σ=${expense_stats['std']:,.0f}"
         )
         
         fig.add_annotation(
             text=stats_text,
             xref="paper", yref="paper",
-            x=0.5, y=1.15, xanchor="center", yanchor="top",
+            x=0.5, y=-0.12, xanchor="center", yanchor="top",
             showarrow=False,
-            font=dict(size=10, color="gray"),
+            font=dict(size=9, color="gray"),
             bordercolor="lightgray",
             borderwidth=1,
-            bgcolor="rgba(255,255,255,0.8)"
+            bgcolor="rgba(255,255,255,0.9)"
+        )
+        
+        # Add legend for symbols
+        fig.add_annotation(
+            text="μ=Mean, M=Median, σ=Std Dev | 🔍 Toolbar for zoom/pan",
+            xref="paper", yref="paper",
+            x=0.5, y=-0.18, xanchor="center", yanchor="top",
+            showarrow=False,
+            font=dict(size=8, color="gray")
         )
         
         return fig
@@ -808,28 +832,31 @@ class StreamlitBankAnalyzer:
                 side="right",
                 tickformat='$,.0f'
             ),
-            height=500,
+            height=550,  # Increased height
             template='plotly_white',
             hovermode='closest',
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1
+                y=-0.25,  # Moved legend below
+                xanchor="center",
+                x=0.5,
+                font=dict(size=10)
             ),
             # Enable zooming and panning
             xaxis=dict(fixedrange=False),
-            yaxis=dict(fixedrange=False, tickformat='$,.0f')
+            yaxis=dict(fixedrange=False, tickformat='$,.0f'),
+            # Add margins for better spacing
+            margin=dict(l=60, r=60, t=80, b=120)
         )
         
-        # Add annotation
+        # Add annotation with better positioning
         fig.add_annotation(
-            text="💡 Bubble size = transaction amount | Click legend to toggle<br>🔍 Use toolbar for zoom, pan, and selection",
+            text="💡 Bubble size = amount | Click legend to toggle | 🔍 Toolbar for zoom/pan/select",
             xref="paper", yref="paper",
-            x=0, y=1.15, xanchor="left", yanchor="top",
+            x=0.5, y=-0.35, xanchor="center", yanchor="top",
             showarrow=False,
-            font=dict(size=10, color="gray")
+            font=dict(size=9, color="gray")
         )
         
         return fig
