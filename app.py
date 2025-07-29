@@ -13,6 +13,8 @@ import os
 import io
 import base64
 from io import BytesIO
+import json
+import hashlib
 
 # Set page configuration
 st.set_page_config(
@@ -1283,6 +1285,275 @@ class StreamlitBankAnalyzer:
         
         return schedule_display
     
+    def setup_sms_notifications(self):
+        """Setup SMS notification preferences in sidebar."""
+        st.sidebar.markdown("---")
+        st.sidebar.header("📱 SMS Notifications")
+        
+        # SMS notification toggle
+        enable_sms = st.sidebar.checkbox(
+            "🔔 Enable SMS Alerts", 
+            value=False,
+            help="Get SMS notifications when recurring payments are due"
+        )
+        
+        sms_config = {}
+        
+        if enable_sms:
+            st.sidebar.markdown("**📞 Contact Information:**")
+            mobile_number = st.sidebar.text_input(
+                "Mobile Number",
+                placeholder="+1234567890",
+                help="Enter your mobile number with country code (e.g., +1234567890)"
+            )
+            
+            st.sidebar.markdown("**🔧 Twilio Configuration:**")
+            st.sidebar.info("💡 Get free Twilio credentials at twilio.com")
+            
+            account_sid = st.sidebar.text_input(
+                "Twilio Account SID",
+                type="password",
+                help="Your Twilio Account SID from the console"
+            )
+            
+            auth_token = st.sidebar.text_input(
+                "Twilio Auth Token",
+                type="password", 
+                help="Your Twilio Auth Token from the console"
+            )
+            
+            twilio_number = st.sidebar.text_input(
+                "Twilio Phone Number",
+                placeholder="+1234567890",
+                help="Your Twilio phone number (from/sender number)"
+            )
+            
+            st.sidebar.markdown("**⏰ Notification Preferences:**")
+            days_ahead = st.sidebar.selectbox(
+                "Notify me _ days before due date:",
+                options=[1, 2, 3, 5, 7],
+                index=2,
+                help="How many days in advance to send notifications"
+            )
+            
+            notification_time = st.sidebar.time_input(
+                "Notification Time",
+                value=datetime.now().replace(hour=9, minute=0, second=0, microsecond=0).time(),
+                help="What time of day to send notifications"
+            )
+            
+            # Categories to monitor
+            st.sidebar.markdown("**📋 Monitor Categories:**")
+            monitor_subscriptions = st.sidebar.checkbox("📺 Subscriptions", value=True)
+            monitor_utilities = st.sidebar.checkbox("⚡ Utilities", value=True)
+            monitor_insurance = st.sidebar.checkbox("🛡️ Insurance", value=True)
+            monitor_housing = st.sidebar.checkbox("🏠 Housing", value=False)
+            
+            if mobile_number and account_sid and auth_token and twilio_number:
+                sms_config = {
+                    'enabled': True,
+                    'mobile_number': mobile_number,
+                    'account_sid': account_sid,
+                    'auth_token': auth_token,
+                    'twilio_number': twilio_number,
+                    'days_ahead': days_ahead,
+                    'notification_time': notification_time,
+                    'categories': {
+                        'Subscriptions': monitor_subscriptions,
+                        'Utilities': monitor_utilities,
+                        'Insurance': monitor_insurance,
+                        'Housing': monitor_housing
+                    }
+                }
+                
+                st.sidebar.success("✅ SMS notifications configured!")
+            elif enable_sms:
+                st.sidebar.warning("⚠️ Please fill all fields to enable SMS notifications")
+        
+        return sms_config
+    
+    def send_sms_notification(self, sms_config, message):
+        """Send SMS notification using Twilio."""
+        try:
+            # Try to import Twilio
+            try:
+                from twilio.rest import Client
+            except ImportError:
+                st.error("❌ Twilio package not installed. Please install with: pip install twilio")
+                return False
+            
+            # Create Twilio client
+            client = Client(sms_config['account_sid'], sms_config['auth_token'])
+            
+            # Send message
+            message = client.messages.create(
+                body=message,
+                from_=sms_config['twilio_number'],
+                to=sms_config['mobile_number']
+            )
+            
+            return True
+            
+        except Exception as e:
+            st.error(f"❌ Failed to send SMS: {str(e)}")
+            return False
+    
+    def calculate_upcoming_payments(self, df, sms_config):
+        """Calculate upcoming payments and send notifications if needed."""
+        if not sms_config or not sms_config.get('enabled', False):
+            return []
+        
+        # Get recurring expenses table
+        recurring_table = self.create_recurring_expenses_table(df)
+        if recurring_table is None or len(recurring_table) == 0:
+            return []
+        
+        upcoming_payments = []
+        today = datetime.now().date()
+        notification_days = sms_config['days_ahead']
+        
+        # Filter for monitored categories
+        monitored_categories = [cat for cat, enabled in sms_config['categories'].items() if enabled]
+        filtered_table = recurring_table[recurring_table['Category'].isin(monitored_categories)]
+        
+        for _, row in filtered_table.iterrows():
+            # Only check monthly and regular payments
+            if row['Payment_Pattern'] in ['Monthly', 'Quarterly']:
+                next_payment_date = pd.to_datetime(row['Next_Expected_Payment']).date()
+                days_until_payment = (next_payment_date - today).days
+                
+                # Check if notification should be sent
+                if days_until_payment == notification_days:
+                    upcoming_payments.append({
+                        'merchant': row['Description'],
+                        'category': row['Category'],
+                        'amount': row['Avg_Amount'],
+                        'due_date': next_payment_date,
+                        'days_until': days_until_payment
+                    })
+        
+        return upcoming_payments
+    
+    def create_notification_dashboard(self, df, sms_config):
+        """Create a dashboard showing upcoming payments and notification status."""
+        st.markdown("### 📱 SMS Notification Dashboard")
+        
+        if not sms_config or not sms_config.get('enabled', False):
+            st.info("📋 SMS notifications are not configured. Enable them in the sidebar to track upcoming payments.")
+            
+            # Show setup guide
+            with st.expander("📋 How to Setup SMS Notifications", expanded=False):
+                st.markdown("""
+                **Step 1: Get Twilio Account (Free)**
+                1. Go to [twilio.com](https://www.twilio.com) and sign up for a free account
+                2. Verify your phone number
+                3. Get $15 free credit (enough for ~500 SMS messages)
+                
+                **Step 2: Get Your Credentials**
+                1. From your Twilio Console Dashboard, copy:
+                   - Account SID
+                   - Auth Token
+                   - Your Twilio phone number
+                
+                **Step 3: Configure in Sidebar**
+                1. Check "🔔 Enable SMS Alerts" in the sidebar
+                2. Enter your mobile number with country code (e.g., +1234567890)
+                3. Paste your Twilio credentials
+                4. Choose notification preferences
+                5. Select which payment categories to monitor
+                
+                **Step 4: Test & Use**
+                1. Click "Send Test SMS" to verify setup
+                2. The app will automatically calculate due dates based on your payment history
+                3. Use "Send Payment Alerts Now" to get immediate notifications
+                
+                **💡 Tips:**
+                - Twilio free trial works with verified numbers only
+                - For production use, upgrade your Twilio account
+                - SMS costs about $0.0075 per message
+                - Keep your Twilio credentials secure
+                """)
+            return
+        
+        # Get upcoming payments
+        upcoming_payments = self.calculate_upcoming_payments(df, sms_config)
+        
+        # Display notification settings
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("📱 Mobile Number", sms_config['mobile_number'][-4:].rjust(10, '*'))
+        
+        with col2:
+            monitored_cats = [cat for cat, enabled in sms_config['categories'].items() if enabled]
+            st.metric("📋 Monitored Categories", len(monitored_cats))
+        
+        with col3:
+            st.metric("⏰ Alert Days Ahead", f"{sms_config['days_ahead']} days")
+        
+        # Show upcoming payments
+        st.markdown("#### 🔔 Upcoming Payment Alerts")
+        
+        if upcoming_payments:
+            # Create a DataFrame for display
+            payments_df = pd.DataFrame(upcoming_payments)
+            payments_df['Amount'] = payments_df['amount'].apply(lambda x: f"${x:,.2f}")
+            payments_df['Due Date'] = payments_df['due_date'].apply(lambda x: x.strftime('%Y-%m-%d'))
+            payments_df['Days Until'] = payments_df['days_until']
+            
+            display_payments = payments_df[['merchant', 'category', 'Amount', 'Due Date', 'Days Until']]
+            display_payments.columns = ['Merchant/Service', 'Category', 'Amount', 'Due Date', 'Days Until']
+            
+            st.dataframe(display_payments, use_container_width=True, hide_index=True)
+            
+            # Test SMS button
+            if st.button("📤 Send Test SMS", help="Send a test notification to verify SMS setup"):
+                test_message = f"🏦 Bank Statement Analyzer Test\n\nYour SMS notifications are working! You have {len(upcoming_payments)} upcoming payments to monitor.\n\nNext alert will be sent {sms_config['days_ahead']} days before due dates."
+                
+                with st.spinner("Sending test SMS..."):
+                    if self.send_sms_notification(sms_config, test_message):
+                        st.success("✅ Test SMS sent successfully!")
+                    else:
+                        st.error("❌ Failed to send test SMS. Please check your Twilio configuration.")
+            
+            # Auto-send notifications button
+            if st.button("🚀 Send Payment Alerts Now", help="Send SMS alerts for all upcoming payments"):
+                with st.spinner("Sending payment alerts..."):
+                    success_count = 0
+                    for payment in upcoming_payments:
+                        message = f"💰 Payment Reminder\n\n{payment['merchant']} ({payment['category']})\nAmount: ${payment['amount']:,.2f}\nDue: {payment['due_date'].strftime('%m/%d/%Y')}\n\n🏦 Bank Statement Analyzer"
+                        
+                        if self.send_sms_notification(sms_config, message):
+                            success_count += 1
+                    
+                    if success_count == len(upcoming_payments):
+                        st.success(f"✅ Sent {success_count} payment alerts successfully!")
+                    else:
+                        st.warning(f"⚠️ Sent {success_count} of {len(upcoming_payments)} alerts. Some may have failed.")
+        
+        else:
+            st.info("🎉 No payment alerts needed at this time. All your recurring payments are on track!")
+            
+            # Still offer test SMS option
+            if st.button("📤 Send Test SMS", help="Send a test notification to verify SMS setup"):
+                test_message = f"🏦 Bank Statement Analyzer Test\n\nYour SMS notifications are working! No payments due in the next {sms_config['days_ahead']} days.\n\nStay tuned for future alerts!"
+                
+                with st.spinner("Sending test SMS..."):
+                    if self.send_sms_notification(sms_config, test_message):
+                        st.success("✅ Test SMS sent successfully!")
+                    else:
+                        st.error("❌ Failed to send test SMS. Please check your Twilio configuration.")
+        
+        # Show monitoring status
+        st.markdown("#### 📊 Monitoring Status")
+        monitor_data = []
+        for category, enabled in sms_config['categories'].items():
+            status = "✅ Active" if enabled else "⏸️ Disabled"
+            monitor_data.append({'Category': category, 'Status': status})
+        
+        monitor_df = pd.DataFrame(monitor_data)
+        st.dataframe(monitor_df, use_container_width=True, hide_index=True)
+    
     def get_insights(self, df, total_income, total_expenses, total_savings, savings_rate):
         """Generate financial insights."""
         insights = []
@@ -1677,7 +1948,8 @@ def main():
     2. **Filter Data**: Use interactive filters below to focus analysis
     3. **Explore Charts**: All visualizations are interactive with zoom/pan
     4. **Analyze Recurring Expenses**: Track subscriptions, utilities, groceries, fuel
-    5. **Download Reports**: Generate PDF or Excel summaries
+    5. **Setup SMS Alerts**: Get notified when payments are due
+    6. **Download Reports**: Generate PDF or Excel summaries
     
     **🔄 Recurring Expenses Analysis:**
     - 📊 **Monthly Tracking**: Subscriptions, utilities, groceries, gas & fuel
@@ -1686,6 +1958,12 @@ def main():
     - 📋 **Payment Tables**: Detailed tables with due dates and amounts
     - 🔍 **Search & Filter**: Find specific payments and merchants
     - 🎯 **Optimization Tips**: Find ways to reduce unwanted expenses
+    
+    **📱 SMS Payment Alerts:**
+    - 🔔 **Due Date Reminders**: Get SMS alerts before payments are due
+    - ⚙️ **Custom Settings**: Choose notification timing and categories
+    - 📲 **Twilio Integration**: Secure SMS delivery via Twilio API
+    - 🔧 **Test & Manage**: Send test messages and manage alerts
     
     **Interactive Features:**
     - 🔍 **Date & Category Filters**: Focus on specific time periods or categories
@@ -1771,6 +2049,9 @@ def main():
                     st.sidebar.success(f"✅ Showing {len(filtered_df):,} of {len(processed_df):,} transactions")
                 else:
                     st.sidebar.info(f"📊 Showing all {len(processed_df):,} transactions")
+                
+                # Setup SMS notifications
+                sms_config = analyzer.setup_sms_notifications()
                 
                 # Calculate metrics using filtered data
                 total_income, total_expenses, total_savings, savings_rate = analyzer.calculate_metrics(filtered_df)
@@ -2006,6 +2287,10 @@ def main():
                     
                     else:
                         st.info("📝 No detailed payment schedule available for the selected data range.")
+                
+                # SMS Notification Dashboard
+                st.markdown('<div class="chart-header">📱 SMS Payment Alerts</div>', unsafe_allow_html=True)
+                analyzer.create_notification_dashboard(filtered_df, sms_config)
                 
                 # Enhanced Insights section with optimization
                 st.markdown('<div class="insight-header">💡 Financial Insights & Expense Optimization</div>', unsafe_allow_html=True)
