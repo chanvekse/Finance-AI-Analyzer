@@ -18,13 +18,32 @@ import hashlib
 from datetime import timedelta
 import calendar
 import re
-from PIL import Image
-import pytesseract
-import numpy as np
-import cv2
 import base64
 import secrets
 import bcrypt
+
+# Optional imports for OCR functionality
+try:
+    from PIL import Image
+    import pytesseract
+    import numpy as np
+    import cv2
+    OCR_AVAILABLE = True
+except ImportError as e:
+    OCR_AVAILABLE = False
+    # Create dummy classes to prevent errors
+    class Image:
+        @staticmethod
+        def open(*args, **kwargs):
+            return None
+    
+    class np:
+        @staticmethod
+        def array(*args, **kwargs):
+            return None
+    
+    def cv2(*args, **kwargs):
+        return None
 
 # Set page configuration
 st.set_page_config(
@@ -1834,6 +1853,10 @@ class StreamlitBankAnalyzer:
     
     def preprocess_receipt_image(self, image):
         """Preprocess receipt image for better OCR results."""
+        if not OCR_AVAILABLE:
+            st.warning("OCR libraries not available. Image preprocessing skipped.")
+            return image
+            
         try:
             # Convert PIL Image to numpy array
             img_array = np.array(image)
@@ -1861,10 +1884,12 @@ class StreamlitBankAnalyzer:
     
     def extract_text_from_receipt(self, image):
         """Extract text from receipt image using OCR."""
-        try:
-            # Try to import pytesseract
-            import pytesseract
+        if not OCR_AVAILABLE:
+            st.error("❌ OCR functionality is not available in this deployment.")
+            st.info("📱 Please use the manual entry option below to add your grocery items.")
+            return ""
             
+        try:
             # Preprocess the image
             processed_image = self.preprocess_receipt_image(image)
             
@@ -1876,10 +1901,6 @@ class StreamlitBankAnalyzer:
             
             return text.strip()
             
-        except ImportError:
-            st.error("❌ OCR functionality requires pytesseract. Please install it with: pip install pytesseract")
-            st.info("📱 As an alternative, you can manually enter your grocery items below.")
-            return ""
         except Exception as e:
             st.error(f"❌ OCR processing failed: {e}")
             st.info("📱 You can manually enter your grocery items below instead.")
@@ -1958,6 +1979,10 @@ class StreamlitBankAnalyzer:
         with tab1:
             st.markdown("#### 📱 Upload Grocery Receipt")
             st.markdown("**Take a photo of your receipt or upload an image file**")
+            
+            # Show OCR availability status
+            if not OCR_AVAILABLE:
+                st.warning("⚠️ **OCR scanning is not available in this deployment.** You can still upload receipt images for reference, but will need to enter items manually.")
             
             # Receipt upload
             uploaded_file = st.file_uploader(
@@ -3132,6 +3157,10 @@ def main():
     st.markdown('<h1 class="main-header">💰 Bank Statement Analyzer</h1>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">📊 Upload your bank statement CSV and get comprehensive financial insights!</div>', unsafe_allow_html=True)
     
+    # Show OCR status
+    if not OCR_AVAILABLE:
+        st.info("ℹ️ **Note:** OCR scanning for receipts is disabled. To enable automatic receipt text extraction, install optional dependencies: `pip install -r requirements-ocr.txt`")
+    
     # Sidebar
     st.sidebar.header("📋 Instructions")
     st.sidebar.markdown("""
@@ -3153,9 +3182,9 @@ def main():
     
     **🛒 Grocery Receipt Tracking:**
     - 📱 **Mobile Upload**: Take photos of receipts with your phone
-    - 🔍 **OCR Scanning**: Automatic text extraction from receipt images
+    - 🔍 **OCR Scanning**: Automatic text extraction (optional - install requirements-ocr.txt)
     - 🏷️ **Auto-Categorize**: Smart categorization (Snacks, Milk, Vegetables, etc.)
-    - ✏️ **Manual Entry**: Add items manually if OCR doesn't work perfectly
+    - ✏️ **Manual Entry**: Add items manually (works without OCR)
     - 📊 **Category Tracking**: See spending by Snacks, Dairy & Milk, Vegetables, etc.
     - 📈 **YTD Analysis**: Year-to-date spending breakdown by grocery category
     - 🛍️ **Trip Analysis**: Track spending per grocery store visit

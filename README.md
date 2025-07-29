@@ -6,10 +6,12 @@ A comprehensive financial analysis tool that provides insights into your spendin
 
 ### Core Analysis
 - ✅ **CSV Data Processing**: Load and validate bank statement CSV files
+- ✅ **Manual Expense Entry**: Quick expense tracking with category dropdowns and auto-date
+- ✅ **Grocery Receipt Scanning**: OCR-powered receipt text extraction (optional)
+- ✅ **Subscription Management**: Track recurring payments with due date alerts
 - ✅ **Smart Categorization**: Automatically categorize transactions using keyword rules
 - ✅ **Financial Metrics**: Calculate income, expenses, savings, and savings rate
-- ✅ **Month-over-Month Comparison**: Track changes between months
-- ✅ **Financial Health Scoring**: Get a comprehensive health score (0-100)
+- ✅ **Password Protection**: Secure user authentication and role management
 
 ### Visualizations
 - 📊 **Category Spending**: Bar charts showing spending by category
@@ -50,12 +52,16 @@ streamlit run app.py
 ## 📦 Installation
 
 1. **Clone or download** this project
-2. **Install dependencies:**
+2. **Install core dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
+3. **Optional: Install OCR dependencies for receipt scanning:**
+   ```bash
+   pip install -r requirements-ocr.txt
+   ```
 
-### Required Dependencies
+### Core Dependencies
 ```
 pandas>=1.5.0          # Data processing
 matplotlib>=3.5.0      # Static charts
@@ -64,7 +70,22 @@ numpy>=1.21.0           # Numerical computations
 fpdf2>=2.7.0           # PDF generation
 streamlit>=1.28.0      # Web application
 plotly>=5.15.0         # Interactive charts
+openpyxl>=3.0.0        # Excel export
+twilio>=8.5.0          # SMS notifications
+bcrypt>=4.0.0          # Password hashing
 ```
+
+### Optional OCR Dependencies
+```
+pytesseract>=0.3.10    # OCR text extraction
+opencv-python>=4.8.0   # Image processing
+pillow>=9.0.0          # Image handling
+```
+
+**Note:** For receipt OCR scanning to work, you also need to install Tesseract OCR:
+- **Windows:** Download from [Tesseract Wiki](https://github.com/UB-Mannheim/tesseract/wiki)
+- **macOS:** `brew install tesseract`
+- **Ubuntu/Debian:** `sudo apt install tesseract-ocr`
 
 ## 📊 CSV File Format
 
@@ -100,14 +121,19 @@ Transactions are automatically categorized using these keyword rules:
 
 ## 🚀 Quick Start
 
-### Option 1: Web App (Recommended)
+### Web Application (Recommended)
 ```bash
 streamlit run app.py
 ```
 1. Open your browser to `http://localhost:8501`
-2. Upload your CSV file
-3. View interactive analysis
-4. Download PDF report
+2. **Login** with default credentials:
+   - Username: `admin`
+   - Password: `admin123`
+   - ⚠️ **Change the password after first login**
+3. Upload CSV files or enter expenses manually
+4. Track groceries with receipt scanning
+5. Set up subscription alerts
+6. Generate comprehensive reports
 
 ### Option 2: Command Line
 ```bash

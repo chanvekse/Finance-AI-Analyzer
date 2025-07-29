@@ -1,0 +1,13 @@
+# Optional OCR Dependencies for Grocery Receipt Scanning
+# Install these if you want automatic receipt text extraction
+pytesseract>=0.3.10
+opencv-python>=4.8.0
+pillow>=9.0.0
+
+# Installation instructions:
+# pip install -r requirements-ocr.txt
+#
+# Note: You may also need to install Tesseract OCR engine:
+# - Windows: Download from https://github.com/UB-Mannheim/tesseract/wiki
+# - macOS: brew install tesseract
+# - Ubuntu/Debian: sudo apt install tesseract-ocr 
