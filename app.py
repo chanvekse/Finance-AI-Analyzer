@@ -15,6 +15,8 @@ import base64
 from io import BytesIO
 import json
 import hashlib
+from datetime import timedelta
+import calendar
 
 # Set page configuration
 st.set_page_config(
@@ -1285,6 +1287,239 @@ class StreamlitBankAnalyzer:
         
         return schedule_display
     
+    def load_manual_subscriptions(self):
+        """Load manually entered subscriptions from session state."""
+        if 'manual_subscriptions' not in st.session_state:
+            st.session_state.manual_subscriptions = []
+        return st.session_state.manual_subscriptions
+    
+    def save_manual_subscriptions(self, subscriptions):
+        """Save manually entered subscriptions to session state."""
+        st.session_state.manual_subscriptions = subscriptions
+    
+    def calculate_next_due_date(self, last_due_date, due_day_of_month):
+        """Calculate the next due date based on the monthly cycle."""
+        today = datetime.now().date()
+        
+        # Start from the last due date or today
+        if last_due_date and last_due_date >= today:
+            # If last due date is in the future, use it
+            return last_due_date
+        
+        # Calculate next occurrence of the due day
+        current_month = today.month
+        current_year = today.year
+        
+        # Try current month first
+        try:
+            next_due = datetime(current_year, current_month, due_day_of_month).date()
+            if next_due > today:
+                return next_due
+        except ValueError:
+            # Day doesn't exist in current month (e.g., Feb 31)
+            pass
+        
+        # Try next month
+        next_month = current_month + 1 if current_month < 12 else 1
+        next_year = current_year if current_month < 12 else current_year + 1
+        
+        # Find the last day of next month to handle edge cases
+        last_day_of_month = calendar.monthrange(next_year, next_month)[1]
+        actual_due_day = min(due_day_of_month, last_day_of_month)
+        
+        return datetime(next_year, next_month, actual_due_day).date()
+    
+    def manage_manual_subscriptions(self):
+        """Interface to manage manual subscription entries."""
+        st.markdown("### ✏️ Manage Your Subscriptions")
+        st.markdown("**Add and manage your recurring subscriptions manually with specific due dates**")
+        
+        # Load existing subscriptions
+        subscriptions = self.load_manual_subscriptions()
+        
+        # Add new subscription form
+        with st.expander("➕ Add New Subscription", expanded=len(subscriptions) == 0):
+            with st.form("add_subscription"):
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    service_name = st.text_input(
+                        "Service Name*",
+                        placeholder="Netflix, Spotify, Electric Bill...",
+                        help="Name of the subscription or service"
+                    )
+                
+                with col2:
+                    amount = st.number_input(
+                        "Monthly Amount*",
+                        min_value=0.01,
+                        value=10.00,
+                        step=0.01,
+                        help="Monthly payment amount"
+                    )
+                
+                with col3:
+                    due_day = st.number_input(
+                        "Due Day of Month*",
+                        min_value=1,
+                        max_value=31,
+                        value=15,
+                        help="Day of the month when payment is due"
+                    )
+                
+                category = st.selectbox(
+                    "Category",
+                    options=["Subscriptions", "Utilities", "Insurance", "Housing", "Other"],
+                    help="Type of subscription for better organization"
+                )
+                
+                notes = st.text_area(
+                    "Notes (Optional)",
+                    placeholder="Additional notes about this subscription...",
+                    help="Optional notes for your reference"
+                )
+                
+                submitted = st.form_submit_button("➕ Add Subscription", type="primary")
+                
+                if submitted:
+                    if service_name and amount > 0:
+                        # Calculate next due date
+                        next_due = self.calculate_next_due_date(None, due_day)
+                        
+                        new_subscription = {
+                            'id': f"{service_name}_{len(subscriptions)}_{datetime.now().timestamp()}",
+                            'service_name': service_name,
+                            'amount': amount,
+                            'due_day': due_day,
+                            'category': category,
+                            'notes': notes,
+                            'next_due_date': next_due,
+                            'created_date': datetime.now().date(),
+                            'active': True
+                        }
+                        
+                        subscriptions.append(new_subscription)
+                        self.save_manual_subscriptions(subscriptions)
+                        st.success(f"✅ Added {service_name} - Next due: {next_due.strftime('%Y-%m-%d')}")
+                        st.rerun()
+                    else:
+                        st.error("❌ Please fill in Service Name and Amount")
+        
+        # Display existing subscriptions
+        if subscriptions:
+            st.markdown("### 📋 Your Subscriptions")
+            
+            # Create editable table
+            active_subscriptions = [sub for sub in subscriptions if sub.get('active', True)]
+            
+            if active_subscriptions:
+                # Update next due dates for all subscriptions
+                for sub in active_subscriptions:
+                    sub['next_due_date'] = self.calculate_next_due_date(sub.get('next_due_date'), sub['due_day'])
+                
+                # Save updated dates
+                self.save_manual_subscriptions(subscriptions)
+                
+                # Display subscriptions table
+                df_display = []
+                for i, sub in enumerate(active_subscriptions):
+                    days_until = (sub['next_due_date'] - datetime.now().date()).days
+                    status = "🚨 Due Soon!" if days_until <= 1 else f"📅 {days_until} days"
+                    
+                    df_display.append({
+                        'Service': sub['service_name'],
+                        'Category': sub['category'],
+                        'Amount': f"${sub['amount']:,.2f}",
+                        'Due Day': sub['due_day'],
+                        'Next Due': sub['next_due_date'].strftime('%Y-%m-%d'),
+                        'Status': status,
+                        'Notes': sub.get('notes', '')[:50] + ('...' if len(sub.get('notes', '')) > 50 else '')
+                    })
+                
+                # Display the table
+                df = pd.DataFrame(df_display)
+                st.dataframe(
+                    df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Next Due": st.column_config.DateColumn(),
+                        "Amount": st.column_config.TextColumn(),
+                        "Status": st.column_config.TextColumn()
+                    }
+                )
+                
+                # Management actions
+                st.markdown("### ⚙️ Manage Subscriptions")
+                
+                # Delete subscription
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if len(active_subscriptions) > 0:
+                        service_to_delete = st.selectbox(
+                            "Select subscription to remove:",
+                            options=[sub['service_name'] for sub in active_subscriptions],
+                            key="delete_subscription"
+                        )
+                        
+                        if st.button("🗑️ Remove Selected", type="secondary"):
+                            # Mark as inactive instead of deleting
+                            for sub in subscriptions:
+                                if sub['service_name'] == service_to_delete and sub.get('active', True):
+                                    sub['active'] = False
+                                    break
+                            
+                            self.save_manual_subscriptions(subscriptions)
+                            st.success(f"✅ Removed {service_to_delete}")
+                            st.rerun()
+                
+                with col2:
+                    if st.button("🔄 Update All Due Dates", help="Recalculate next due dates for all subscriptions"):
+                        updated_count = 0
+                        for sub in active_subscriptions:
+                            old_date = sub['next_due_date']
+                            sub['next_due_date'] = self.calculate_next_due_date(sub['next_due_date'], sub['due_day'])
+                            if sub['next_due_date'] != old_date:
+                                updated_count += 1
+                        
+                        self.save_manual_subscriptions(subscriptions)
+                        if updated_count > 0:
+                            st.success(f"✅ Updated {updated_count} subscription due dates")
+                        else:
+                            st.info("📅 All due dates are already current")
+                        st.rerun()
+                
+                # Summary metrics
+                st.markdown("---")
+                col1, col2, col3, col4 = st.columns(4)
+                
+                total_monthly = sum(sub['amount'] for sub in active_subscriptions)
+                due_this_week = sum(1 for sub in active_subscriptions 
+                                  if (sub['next_due_date'] - datetime.now().date()).days <= 7)
+                due_tomorrow = sum(1 for sub in active_subscriptions 
+                                 if (sub['next_due_date'] - datetime.now().date()).days == 1)
+                
+                with col1:
+                    st.metric("💰 Total Monthly", f"${total_monthly:,.2f}")
+                
+                with col2:
+                    st.metric("📅 Due This Week", due_this_week)
+                
+                with col3:
+                    st.metric("🚨 Due Tomorrow", due_tomorrow)
+                
+                with col4:
+                    st.metric("📊 Active Services", len(active_subscriptions))
+            
+            else:
+                st.info("🎉 No active subscriptions. Add your first subscription above!")
+        
+        else:
+            st.info("📝 No subscriptions added yet. Use the form above to add your first subscription.")
+        
+        return subscriptions
+    
     def setup_sms_notifications(self):
         """Setup SMS notification preferences in sidebar."""
         st.sidebar.markdown("---")
@@ -1332,7 +1567,7 @@ class StreamlitBankAnalyzer:
             days_ahead = st.sidebar.selectbox(
                 "Notify me _ days before due date:",
                 options=[1, 2, 3, 5, 7],
-                index=2,
+                index=0,  # Default to 1 day ahead
                 help="How many days in advance to send notifications"
             )
             
@@ -1398,14 +1633,16 @@ class StreamlitBankAnalyzer:
             st.error(f"❌ Failed to send SMS: {str(e)}")
             return False
     
-    def calculate_upcoming_payments(self, df, sms_config):
-        """Calculate upcoming payments and send notifications if needed."""
+    def calculate_upcoming_payments(self, sms_config):
+        """Calculate upcoming payments from manual subscriptions."""
         if not sms_config or not sms_config.get('enabled', False):
             return []
         
-        # Get recurring expenses table
-        recurring_table = self.create_recurring_expenses_table(df)
-        if recurring_table is None or len(recurring_table) == 0:
+        # Get manual subscriptions
+        subscriptions = self.load_manual_subscriptions()
+        active_subscriptions = [sub for sub in subscriptions if sub.get('active', True)]
+        
+        if not active_subscriptions:
             return []
         
         upcoming_payments = []
@@ -1414,28 +1651,28 @@ class StreamlitBankAnalyzer:
         
         # Filter for monitored categories
         monitored_categories = [cat for cat, enabled in sms_config['categories'].items() if enabled]
-        filtered_table = recurring_table[recurring_table['Category'].isin(monitored_categories)]
         
-        for _, row in filtered_table.iterrows():
-            # Only check monthly and regular payments
-            if row['Payment_Pattern'] in ['Monthly', 'Quarterly']:
-                next_payment_date = pd.to_datetime(row['Next_Expected_Payment']).date()
-                days_until_payment = (next_payment_date - today).days
+        for sub in active_subscriptions:
+            # Check if this category is being monitored
+            if sub['category'] in monitored_categories:
+                # Update the due date to ensure it's current
+                next_due_date = self.calculate_next_due_date(sub.get('next_due_date'), sub['due_day'])
+                days_until_payment = (next_due_date - today).days
                 
                 # Check if notification should be sent
                 if days_until_payment == notification_days:
                     upcoming_payments.append({
-                        'merchant': row['Description'],
-                        'category': row['Category'],
-                        'amount': row['Avg_Amount'],
-                        'due_date': next_payment_date,
+                        'merchant': sub['service_name'],
+                        'category': sub['category'],
+                        'amount': sub['amount'],
+                        'due_date': next_due_date,
                         'days_until': days_until_payment
                     })
         
         return upcoming_payments
     
-    def create_notification_dashboard(self, df, sms_config):
-        """Create a dashboard showing upcoming payments and notification status."""
+    def create_notification_dashboard(self, sms_config):
+        """Create a dashboard showing upcoming payments and notification status for manual subscriptions."""
         st.markdown("### 📱 SMS Notification Dashboard")
         
         if not sms_config or not sms_config.get('enabled', False):
@@ -1459,24 +1696,30 @@ class StreamlitBankAnalyzer:
                 1. Check "🔔 Enable SMS Alerts" in the sidebar
                 2. Enter your mobile number with country code (e.g., +1234567890)
                 3. Paste your Twilio credentials
-                4. Choose notification preferences
+                4. Choose notification preferences (default: 1 day ahead)
                 5. Select which payment categories to monitor
                 
-                **Step 4: Test & Use**
+                **Step 4: Add Your Subscriptions**
+                1. Use the "Manage Your Subscriptions" section above to add your services
+                2. Enter service name, amount, and due day of month
+                3. The app will calculate next due dates automatically
+                
+                **Step 5: Test & Use**
                 1. Click "Send Test SMS" to verify setup
-                2. The app will automatically calculate due dates based on your payment history
-                3. Use "Send Payment Alerts Now" to get immediate notifications
+                2. Use "Send Payment Alerts Now" for immediate notifications
+                3. Alerts will be sent automatically based on your preferences
                 
                 **💡 Tips:**
                 - Twilio free trial works with verified numbers only
                 - For production use, upgrade your Twilio account
                 - SMS costs about $0.0075 per message
                 - Keep your Twilio credentials secure
+                - Focus on manually entered subscriptions only
                 """)
             return
         
-        # Get upcoming payments
-        upcoming_payments = self.calculate_upcoming_payments(df, sms_config)
+        # Get upcoming payments from manual subscriptions
+        upcoming_payments = self.calculate_upcoming_payments(sms_config)
         
         # Display notification settings
         col1, col2, col3 = st.columns(3)
@@ -1947,23 +2190,23 @@ def main():
     1. **Upload CSV**: Your file should have columns: Date, Description, Amount
     2. **Filter Data**: Use interactive filters below to focus analysis
     3. **Explore Charts**: All visualizations are interactive with zoom/pan
-    4. **Analyze Recurring Expenses**: Track subscriptions, utilities, groceries, fuel
-    5. **Setup SMS Alerts**: Get notified when payments are due
+    4. **Add Subscriptions**: Manually enter your recurring payments
+    5. **Setup SMS Alerts**: Get notified 1 day before payments are due
     6. **Download Reports**: Generate PDF or Excel summaries
     
-    **🔄 Recurring Expenses Analysis:**
-    - 📊 **Monthly Tracking**: Subscriptions, utilities, groceries, gas & fuel
-    - 📈 **YTD Breakdown**: Year-to-date spending by category
-    - 📅 **Calendar View**: Identify patterns in recurring payments
-    - 📋 **Payment Tables**: Detailed tables with due dates and amounts
-    - 🔍 **Search & Filter**: Find specific payments and merchants
-    - 🎯 **Optimization Tips**: Find ways to reduce unwanted expenses
+    **📋 Manual Subscription Management:**
+    - ✏️ **Add Services**: Enter subscription/utility details manually
+    - 💰 **Set Amounts**: Specify exact monthly payment amounts
+    - 📅 **Due Dates**: Set the day of month when payment is due
+    - 🔄 **Auto-Calculate**: Next due dates calculated automatically
+    - 🗑️ **Remove/Edit**: Manage your subscription list easily
+    - 📊 **Track Totals**: See total monthly commitments
     
     **📱 SMS Payment Alerts:**
-    - 🔔 **Due Date Reminders**: Get SMS alerts before payments are due
-    - ⚙️ **Custom Settings**: Choose notification timing and categories
+    - 🔔 **1-Day Reminders**: Get SMS alerts 1 day before due date
+    - ⚙️ **Manual Only**: Alerts only for manually entered subscriptions
     - 📲 **Twilio Integration**: Secure SMS delivery via Twilio API
-    - 🔧 **Test & Manage**: Send test messages and manage alerts
+    - 🔧 **Test & Send**: Send test messages and immediate alerts
     
     **Interactive Features:**
     - 🔍 **Date & Category Filters**: Focus on specific time periods or categories
@@ -1972,7 +2215,7 @@ def main():
     
     **Report Options:**
     - 📄 **PDF**: Visual summary with charts
-    - 📊 **Excel**: 9 detailed sheets including recurring expense tables
+    - 📊 **Excel**: 9 detailed sheets including transaction analysis
     
     **CSV Format Example:**
     ```
@@ -2126,171 +2369,15 @@ def main():
                 if timeline_chart:
                     st.plotly_chart(timeline_chart, use_container_width=True)
                 
-                # Recurring Expenses Analysis Section
-                st.markdown('<div class="chart-header">🔄 Recurring Expenses Analysis</div>', unsafe_allow_html=True)
+                # Manual Subscription Management Section
+                st.markdown('<div class="chart-header">📋 Manual Subscription Management</div>', unsafe_allow_html=True)
                 
-                # Create columns for recurring expense charts
-                recurring_col1, recurring_col2 = st.columns(2)
-                
-                with recurring_col1:
-                    st.subheader("📊 Monthly Recurring Expenses")
-                    recurring_chart = analyzer.create_recurring_expenses_analysis(filtered_df)
-                    if recurring_chart:
-                        st.plotly_chart(recurring_chart, use_container_width=True)
-                
-                with recurring_col2:
-                    st.subheader("📈 YTD Spending Breakdown")
-                    ytd_chart = analyzer.create_ytd_spending_breakdown(filtered_df)
-                    if ytd_chart:
-                        st.plotly_chart(ytd_chart, use_container_width=True)
-                
-                # Recurring expenses calendar (full width)
-                st.subheader("📅 Recurring Expenses Calendar")
-                calendar_chart = analyzer.create_recurring_expenses_calendar(filtered_df)
-                if calendar_chart:
-                    st.plotly_chart(calendar_chart, use_container_width=True)
-                
-                # Recurring Expenses Tables Section
-                st.markdown('<div class="chart-header">📋 Recurring Expenses Tables</div>', unsafe_allow_html=True)
-                
-                # Create tabs for different table views
-                table_tab1, table_tab2 = st.tabs(["📊 Payment Summary", "📅 Detailed Schedule"])
-                
-                with table_tab1:
-                    st.subheader("📊 Recurring Payment Summary")
-                    st.markdown("**Overview of your recurring expenses with payment patterns and next expected dates**")
-                    
-                    recurring_table = analyzer.create_recurring_expenses_table(filtered_df)
-                    if recurring_table is not None and len(recurring_table) > 0:
-                        # Format the table for better display
-                        display_table = recurring_table.copy()
-                        display_table['Avg_Amount'] = display_table['Avg_Amount'].apply(lambda x: f"${x:,.2f}")
-                        display_table['Total_Spent'] = display_table['Total_Spent'].apply(lambda x: f"${x:,.2f}")
-                        display_table['Amount_Variance'] = display_table['Amount_Variance'].apply(lambda x: f"${x:,.2f}")
-                        display_table['First_Payment'] = display_table['First_Payment'].dt.strftime('%Y-%m-%d')
-                        display_table['Last_Payment'] = display_table['Last_Payment'].dt.strftime('%Y-%m-%d')
-                        display_table['Next_Expected_Payment'] = display_table['Next_Expected_Payment'].dt.strftime('%Y-%m-%d')
-                        display_table['Days_Between_Payments'] = display_table['Days_Between_Payments'].astype(int)
-                        
-                        # Rename columns for better readability
-                        display_table = display_table.rename(columns={
-                            'Description': 'Merchant/Service',
-                            'Category': 'Category',
-                            'Avg_Amount': 'Avg Amount',
-                            'Frequency': 'Count',
-                            'Total_Spent': 'Total Spent',
-                            'Amount_Variance': 'Amount Variance',
-                            'First_Payment': 'First Payment',
-                            'Last_Payment': 'Last Payment',
-                            'Days_Between_Payments': 'Days Between',
-                            'Next_Expected_Payment': 'Next Expected',
-                            'Payment_Pattern': 'Pattern'
-                        })
-                        
-                        # Display the table
-                        st.dataframe(
-                            display_table,
-                            use_container_width=True,
-                            hide_index=True,
-                            column_config={
-                                "Pattern": st.column_config.TextColumn(
-                                    help="Payment frequency pattern (Monthly, Quarterly, etc.)"
-                                ),
-                                "Next Expected": st.column_config.DateColumn(
-                                    help="Estimated next payment date based on historical pattern"
-                                ),
-                                "Days Between": st.column_config.NumberColumn(
-                                    help="Average days between payments"
-                                )
-                            }
-                        )
-                        
-                        # Add summary statistics
-                        st.markdown("---")
-                        col1, col2, col3, col4 = st.columns(4)
-                        
-                        with col1:
-                            monthly_recurring = recurring_table[recurring_table['Payment_Pattern'] == 'Monthly']
-                            monthly_total = monthly_recurring['Avg_Amount'].sum() if len(monthly_recurring) > 0 else 0
-                            st.metric("💳 Monthly Recurring", f"${monthly_total:,.2f}")
-                        
-                        with col2:
-                            total_recurring_services = len(recurring_table)
-                            st.metric("🔄 Recurring Services", total_recurring_services)
-                        
-                        with col3:
-                            subscription_total = recurring_table[recurring_table['Category'] == 'Subscriptions']['Total_Spent'].sum()
-                            st.metric("📺 Subscriptions YTD", f"${subscription_total:,.2f}")
-                        
-                        with col4:
-                            utilities_total = recurring_table[recurring_table['Category'] == 'Utilities']['Total_Spent'].sum()
-                            st.metric("⚡ Utilities YTD", f"${utilities_total:,.2f}")
-                    
-                    else:
-                        st.info("📝 No recurring expenses found in the selected data range.")
-                
-                with table_tab2:
-                    st.subheader("📅 Detailed Payment Schedule")
-                    st.markdown("**Complete history of all recurring payments with exact dates and amounts**")
-                    
-                    payment_schedule = analyzer.create_detailed_payment_schedule(filtered_df)
-                    if payment_schedule is not None and len(payment_schedule) > 0:
-                        # Add search functionality
-                        search_term = st.text_input(
-                            "🔍 Search payments:", 
-                            placeholder="Search by merchant name, category, or amount...",
-                            help="Filter the payment schedule by typing keywords"
-                        )
-                        
-                        # Filter based on search
-                        if search_term:
-                            mask = (
-                                payment_schedule['Description'].str.contains(search_term, case=False, na=False) |
-                                payment_schedule['Category'].str.contains(search_term, case=False, na=False) |
-                                payment_schedule['Amount'].str.contains(search_term, case=False, na=False)
-                            )
-                            filtered_schedule = payment_schedule[mask]
-                        else:
-                            filtered_schedule = payment_schedule
-                        
-                        # Rename columns for better display
-                        filtered_schedule = filtered_schedule.rename(columns={
-                            'Date': 'Payment Date',
-                            'Description': 'Merchant/Service',
-                            'Category': 'Category',
-                            'Amount': 'Amount',
-                            'Day_of_Month': 'Day of Month',
-                            'Days_Since_Last': 'Days Since Last'
-                        })
-                        
-                        # Display the filtered table
-                        st.dataframe(
-                            filtered_schedule,
-                            use_container_width=True,
-                            hide_index=True,
-                            column_config={
-                                "Payment Date": st.column_config.DateColumn(),
-                                "Day of Month": st.column_config.NumberColumn(
-                                    help="Day of the month when payment was made"
-                                ),
-                                "Days Since Last": st.column_config.NumberColumn(
-                                    help="Number of days since the previous payment to the same merchant"
-                                )
-                            }
-                        )
-                        
-                        # Show count of filtered results
-                        if search_term:
-                            st.caption(f"Showing {len(filtered_schedule)} of {len(payment_schedule)} payments")
-                        else:
-                            st.caption(f"Total payments shown: {len(payment_schedule)}")
-                    
-                    else:
-                        st.info("📝 No detailed payment schedule available for the selected data range.")
+                # Manage manual subscriptions
+                subscriptions = analyzer.manage_manual_subscriptions()
                 
                 # SMS Notification Dashboard
                 st.markdown('<div class="chart-header">📱 SMS Payment Alerts</div>', unsafe_allow_html=True)
-                analyzer.create_notification_dashboard(filtered_df, sms_config)
+                analyzer.create_notification_dashboard(sms_config)
                 
                 # Enhanced Insights section with optimization
                 st.markdown('<div class="insight-header">💡 Financial Insights & Expense Optimization</div>', unsafe_allow_html=True)
