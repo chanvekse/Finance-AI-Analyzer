@@ -17,6 +17,12 @@ import json
 import hashlib
 from datetime import timedelta
 import calendar
+import re
+from PIL import Image
+import pytesseract
+import numpy as np
+import cv2
+import base64
 
 # Set page configuration
 st.set_page_config(
@@ -1520,6 +1526,528 @@ class StreamlitBankAnalyzer:
         
         return subscriptions
     
+    def load_grocery_items(self):
+        """Load grocery items from session state."""
+        if 'grocery_items' not in st.session_state:
+            st.session_state.grocery_items = []
+        return st.session_state.grocery_items
+    
+    def save_grocery_items(self, items):
+        """Save grocery items to session state."""
+        st.session_state.grocery_items = items
+    
+    def categorize_grocery_item(self, item_name):
+        """Categorize grocery items into specific categories."""
+        item_lower = str(item_name).lower()
+        
+        # Define grocery categories with keywords
+        categories = {
+            'Vegetables': [
+                'lettuce', 'tomato', 'onion', 'carrot', 'celery', 'pepper', 'broccoli', 
+                'spinach', 'cucumber', 'potato', 'sweet potato', 'corn', 'peas', 'beans',
+                'cabbage', 'cauliflower', 'zucchini', 'squash', 'eggplant', 'mushroom',
+                'avocado', 'garlic', 'ginger', 'kale', 'arugula', 'radish', 'turnip'
+            ],
+            'Fruits': [
+                'apple', 'banana', 'orange', 'grape', 'strawberry', 'blueberry', 'cherry',
+                'peach', 'pear', 'pineapple', 'mango', 'watermelon', 'cantaloupe', 'kiwi',
+                'lemon', 'lime', 'grapefruit', 'raspberry', 'blackberry', 'plum', 'apricot'
+            ],
+            'Dairy & Milk': [
+                'milk', 'yogurt', 'cheese', 'butter', 'cream', 'sour cream', 'cottage cheese',
+                'greek yogurt', 'almond milk', 'soy milk', 'oat milk', 'coconut milk',
+                'whipped cream', 'half and half', 'heavy cream', 'mozzarella', 'cheddar'
+            ],
+            'Snacks': [
+                'chips', 'crackers', 'cookies', 'candy', 'chocolate', 'nuts', 'popcorn',
+                'pretzels', 'granola bar', 'trail mix', 'gum', 'mints', 'ice cream',
+                'frozen yogurt', 'cake', 'pie', 'donut', 'pastry', 'brownie', 'snack'
+            ],
+            'Meat & Protein': [
+                'chicken', 'beef', 'pork', 'fish', 'salmon', 'tuna', 'turkey', 'ham',
+                'bacon', 'sausage', 'eggs', 'tofu', 'tempeh', 'beans', 'lentils',
+                'ground beef', 'steak', 'ribs', 'lamb', 'shrimp', 'crab', 'lobster'
+            ],
+            'Bread & Grains': [
+                'bread', 'bagel', 'muffin', 'cereal', 'oatmeal', 'rice', 'pasta', 'noodles',
+                'flour', 'quinoa', 'barley', 'wheat', 'rolls', 'tortilla', 'pita',
+                'crackers', 'granola', 'cornmeal', 'couscous'
+            ],
+            'Beverages': [
+                'juice', 'soda', 'water', 'coffee', 'tea', 'beer', 'wine', 'energy drink',
+                'sports drink', 'kombucha', 'coconut water', 'sparkling water', 'lemonade'
+            ],
+            'Household & Other': [
+                'detergent', 'soap', 'shampoo', 'toothpaste', 'toilet paper', 'paper towel',
+                'cleaning', 'dish soap', 'laundry', 'trash bag', 'aluminum foil', 'plastic wrap'
+            ]
+        }
+        
+        # Check each category
+        for category, keywords in categories.items():
+            for keyword in keywords:
+                if keyword in item_lower:
+                    return category
+        
+        return 'Other'
+    
+    def preprocess_receipt_image(self, image):
+        """Preprocess receipt image for better OCR results."""
+        try:
+            # Convert PIL Image to numpy array
+            img_array = np.array(image)
+            
+            # Convert to grayscale
+            gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+            
+            # Apply denoising
+            denoised = cv2.fastNlMeansDenoising(gray)
+            
+            # Apply Gaussian blur to reduce noise
+            blurred = cv2.GaussianBlur(denoised, (1, 1), 0)
+            
+            # Apply threshold to get binary image
+            _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            
+            # Convert back to PIL Image
+            processed_image = Image.fromarray(thresh)
+            
+            return processed_image
+            
+        except Exception as e:
+            st.warning(f"Image preprocessing failed: {e}. Using original image.")
+            return image
+    
+    def extract_text_from_receipt(self, image):
+        """Extract text from receipt image using OCR."""
+        try:
+            # Try to import pytesseract
+            import pytesseract
+            
+            # Preprocess the image
+            processed_image = self.preprocess_receipt_image(image)
+            
+            # Perform OCR with specific configuration for receipts
+            custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,$ \n'
+            
+            # Extract text
+            text = pytesseract.image_to_string(processed_image, config=custom_config)
+            
+            return text.strip()
+            
+        except ImportError:
+            st.error("❌ OCR functionality requires pytesseract. Please install it with: pip install pytesseract")
+            st.info("📱 As an alternative, you can manually enter your grocery items below.")
+            return ""
+        except Exception as e:
+            st.error(f"❌ OCR processing failed: {e}")
+            st.info("📱 You can manually enter your grocery items below instead.")
+            return ""
+    
+    def parse_receipt_text(self, text, receipt_date, store_name):
+        """Parse OCR text to extract grocery items and prices."""
+        lines = text.split('\n')
+        items = []
+        total_amount = 0
+        
+        # Common patterns for price matching
+        price_patterns = [
+            r'(\d+\.\d{2})',  # Standard price format like 12.34
+            r'\$(\d+\.\d{2})',  # Price with dollar sign
+            r'(\d+\.\d{2})\s*$',  # Price at end of line
+        ]
+        
+        # Common item patterns (avoid store info, addresses, etc.)
+        skip_patterns = [
+            r'^\d{1,4}\s+\w+\s+st',  # Address patterns
+            r'phone|tel|www|\.com',   # Contact info
+            r'thank you|receipt|store|location',  # Store messages
+            r'^total|subtotal|tax|change',  # Transaction totals
+            r'^\s*$',  # Empty lines
+        ]
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Skip common non-item lines
+            if any(re.search(pattern, line.lower()) for pattern in skip_patterns):
+                continue
+            
+            # Look for lines with prices
+            for pattern in price_patterns:
+                price_match = re.search(pattern, line)
+                if price_match:
+                    price = float(price_match.group(1))
+                    
+                    # Extract item name (everything before the price)
+                    item_text = re.sub(pattern, '', line).strip()
+                    
+                    # Clean up item name
+                    item_text = re.sub(r'^\d+\s*', '', item_text)  # Remove leading numbers
+                    item_text = re.sub(r'\s+', ' ', item_text)      # Normalize spaces
+                    
+                    if len(item_text) > 2 and price > 0:  # Valid item
+                        category = self.categorize_grocery_item(item_text)
+                        
+                        items.append({
+                            'id': f"{receipt_date}_{store_name}_{len(items)}_{datetime.now().timestamp()}",
+                            'date': receipt_date,
+                            'store': store_name,
+                            'item_name': item_text,
+                            'category': category,
+                            'price': price,
+                            'created_at': datetime.now()
+                        })
+                        
+                        total_amount += price
+                    break
+        
+        return items, total_amount
+    
+    def manage_grocery_receipts(self):
+        """Interface to manage grocery receipt uploads and item tracking."""
+        st.markdown("### 🛒 Grocery Receipt Tracker")
+        st.markdown("**Upload receipts and track your grocery spending by category**")
+        
+        # Create tabs for different functionalities
+        tab1, tab2, tab3 = st.tabs(["📱 Upload Receipt", "📊 Item Categories", "📈 YTD Analysis"])
+        
+        with tab1:
+            st.markdown("#### 📱 Upload Grocery Receipt")
+            st.markdown("**Take a photo of your receipt or upload an image file**")
+            
+            # Receipt upload
+            uploaded_file = st.file_uploader(
+                "📷 Choose receipt image",
+                type=['png', 'jpg', 'jpeg', 'bmp', 'tiff'],
+                help="Upload a clear photo of your grocery receipt. Works best with good lighting and minimal shadows.",
+                accept_multiple_files=False
+            )
+            
+            if uploaded_file is not None:
+                # Display the uploaded image
+                image = Image.open(uploaded_file)
+                col1, col2 = st.columns([1, 1])
+                
+                with col1:
+                    st.image(image, caption="Uploaded Receipt", use_column_width=True)
+                
+                with col2:
+                    # Receipt details form
+                    with st.form("receipt_details"):
+                        store_name = st.text_input(
+                            "Store Name*",
+                            placeholder="Walmart, Kroger, Target...",
+                            help="Name of the grocery store"
+                        )
+                        
+                        receipt_date = st.date_input(
+                            "Receipt Date*",
+                            value=datetime.now().date(),
+                            help="Date of the grocery purchase"
+                        )
+                        
+                        process_receipt = st.form_submit_button("🔍 Process Receipt", type="primary")
+                        
+                        if process_receipt and store_name:
+                            with st.spinner("🔍 Processing receipt with OCR..."):
+                                # Extract text from receipt
+                                extracted_text = self.extract_text_from_receipt(image)
+                                
+                                if extracted_text:
+                                    # Parse the extracted text
+                                    items, total = self.parse_receipt_text(extracted_text, receipt_date, store_name)
+                                    
+                                    if items:
+                                        # Save items to storage
+                                        existing_items = self.load_grocery_items()
+                                        existing_items.extend(items)
+                                        self.save_grocery_items(existing_items)
+                                        
+                                        st.success(f"✅ Successfully processed receipt! Found {len(items)} items totaling ${total:.2f}")
+                                        
+                                        # Show processed items
+                                        st.markdown("**Extracted Items:**")
+                                        for item in items:
+                                            st.write(f"• **{item['item_name']}** - {item['category']} - ${item['price']:.2f}")
+                                        
+                                        st.rerun()
+                                    else:
+                                        st.warning("⚠️ No grocery items found in the receipt. You can add items manually below.")
+                                else:
+                                    st.error("❌ Could not extract text from receipt. Please try manual entry.")
+                        
+                        elif process_receipt:
+                            st.error("❌ Please enter the store name to process the receipt.")
+            
+            # Manual item entry option
+            st.markdown("---")
+            st.markdown("#### ✏️ Manual Item Entry")
+            st.markdown("**Add grocery items manually if OCR doesn't work perfectly**")
+            
+            with st.form("manual_grocery_item"):
+                col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
+                
+                with col1:
+                    manual_item = st.text_input("Item Name*", placeholder="Organic Bananas, Whole Milk...")
+                
+                with col2:
+                    manual_category = st.selectbox(
+                        "Category",
+                        options=['Vegetables', 'Fruits', 'Dairy & Milk', 'Snacks', 'Meat & Protein', 
+                                'Bread & Grains', 'Beverages', 'Household & Other'],
+                        help="Select the most appropriate category"
+                    )
+                
+                with col3:
+                    manual_price = st.number_input("Price*", min_value=0.01, value=1.00, step=0.01)
+                
+                with col4:
+                    manual_date = st.date_input("Date", value=datetime.now().date())
+                
+                manual_store = st.text_input("Store Name*", placeholder="Store where you bought this item")
+                
+                add_manual_item = st.form_submit_button("➕ Add Item", type="secondary")
+                
+                if add_manual_item and manual_item and manual_store:
+                    new_item = {
+                        'id': f"{manual_date}_{manual_store}_{datetime.now().timestamp()}",
+                        'date': manual_date,
+                        'store': manual_store,
+                        'item_name': manual_item,
+                        'category': manual_category,
+                        'price': manual_price,
+                        'created_at': datetime.now()
+                    }
+                    
+                    existing_items = self.load_grocery_items()
+                    existing_items.append(new_item)
+                    self.save_grocery_items(existing_items)
+                    
+                    st.success(f"✅ Added {manual_item} to {manual_category} category!")
+                    st.rerun()
+        
+        with tab2:
+            st.markdown("#### 📊 Your Grocery Items by Category")
+            
+            grocery_items = self.load_grocery_items()
+            
+            if grocery_items:
+                # Convert to DataFrame for easier manipulation
+                df = pd.DataFrame(grocery_items)
+                df['date'] = pd.to_datetime(df['date'])
+                df['month_year'] = df['date'].dt.strftime('%Y-%m')
+                
+                # Filter controls
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Category filter
+                    categories = df['category'].unique().tolist()
+                    selected_categories = st.multiselect(
+                        "🏷️ Filter by Categories",
+                        options=categories,
+                        default=categories,
+                        help="Select categories to display"
+                    )
+                
+                with col2:
+                    # Date range filter
+                    min_date = df['date'].min().date()
+                    max_date = df['date'].max().date()
+                    
+                    date_range = st.date_input(
+                        "📅 Date Range",
+                        value=(min_date, max_date),
+                        min_value=min_date,
+                        max_value=max_date
+                    )
+                
+                # Apply filters
+                if len(date_range) == 2:
+                    start_date, end_date = date_range
+                    filtered_df = df[
+                        (df['category'].isin(selected_categories)) &
+                        (df['date'].dt.date >= start_date) &
+                        (df['date'].dt.date <= end_date)
+                    ]
+                else:
+                    filtered_df = df[df['category'].isin(selected_categories)]
+                
+                if len(filtered_df) > 0:
+                    # Display items table
+                    display_df = filtered_df[['date', 'store', 'item_name', 'category', 'price']].copy()
+                    display_df['date'] = display_df['date'].dt.strftime('%Y-%m-%d')
+                    display_df['price'] = display_df['price'].apply(lambda x: f"${x:.2f}")
+                    
+                    # Rename columns
+                    display_df.columns = ['Date', 'Store', 'Item', 'Category', 'Price']
+                    
+                    st.dataframe(
+                        display_df.sort_values('Date', ascending=False),
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    
+                    # Summary by category
+                    st.markdown("#### 📈 Category Summary")
+                    category_summary = filtered_df.groupby('category').agg({
+                        'price': ['sum', 'count', 'mean'],
+                        'item_name': lambda x: list(x.unique())[:3]  # Top 3 unique items
+                    }).round(2)
+                    
+                    category_summary.columns = ['Total_Spent', 'Item_Count', 'Avg_Price', 'Sample_Items']
+                    category_summary['Sample_Items'] = category_summary['Sample_Items'].apply(
+                        lambda x: ', '.join(x) + ('...' if len(x) >= 3 else '')
+                    )
+                    
+                    # Display summary
+                    for category, row in category_summary.iterrows():
+                        with st.expander(f"🏷️ {category} - ${row['Total_Spent']:.2f} ({row['Item_Count']} items)"):
+                            col1, col2 = st.columns(2)
+                            
+                            with col1:
+                                st.metric("Total Spent", f"${row['Total_Spent']:.2f}")
+                                st.metric("Average Price", f"${row['Avg_Price']:.2f}")
+                            
+                            with col2:
+                                st.metric("Items Bought", f"{row['Item_Count']}")
+                                st.write(f"**Sample Items:** {row['Sample_Items']}")
+                    
+                    # Delete functionality
+                    st.markdown("---")
+                    st.markdown("#### 🗑️ Manage Items")
+                    
+                    if st.button("🗑️ Clear All Grocery Data", type="secondary"):
+                        if st.button("⚠️ Confirm Delete All", type="secondary"):
+                            st.session_state.grocery_items = []
+                            st.success("✅ All grocery data cleared!")
+                            st.rerun()
+                
+                else:
+                    st.info("📝 No items found for the selected filters.")
+            
+            else:
+                st.info("📝 No grocery items added yet. Upload a receipt or add items manually in the first tab.")
+        
+        with tab3:
+            st.markdown("#### 📈 Year-to-Date Grocery Analysis")
+            
+            grocery_items = self.load_grocery_items()
+            
+            if grocery_items:
+                df = pd.DataFrame(grocery_items)
+                df['date'] = pd.to_datetime(df['date'])
+                
+                # Year selection
+                available_years = sorted(df['date'].dt.year.unique(), reverse=True)
+                selected_year = st.selectbox(
+                    "📅 Select Year",
+                    options=available_years,
+                    index=0,
+                    help="Choose year for YTD analysis"
+                )
+                
+                # Filter for selected year
+                ytd_df = df[df['date'].dt.year == selected_year]
+                
+                if len(ytd_df) > 0:
+                    # YTD Summary metrics
+                    total_spent = ytd_df['price'].sum()
+                    total_items = len(ytd_df)
+                    avg_per_trip = ytd_df.groupby(['date', 'store'])['price'].sum().mean()
+                    most_expensive = ytd_df.loc[ytd_df['price'].idxmax()]
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric(f"🛒 {selected_year} Total", f"${total_spent:.2f}")
+                    
+                    with col2:
+                        st.metric("📦 Total Items", f"{total_items:,}")
+                    
+                    with col3:
+                        st.metric("🛍️ Avg per Trip", f"${avg_per_trip:.2f}")
+                    
+                    with col4:
+                        st.metric("💰 Most Expensive", f"${most_expensive['price']:.2f}")
+                    
+                    # YTD by Category
+                    st.markdown(f"#### 📊 {selected_year} Spending by Category")
+                    
+                    category_ytd = ytd_df.groupby('category').agg({
+                        'price': ['sum', 'count', 'mean']
+                    }).round(2)
+                    category_ytd.columns = ['Total', 'Count', 'Average']
+                    category_ytd['Percentage'] = (category_ytd['Total'] / total_spent * 100).round(1)
+                    category_ytd = category_ytd.sort_values('Total', ascending=False)
+                    
+                    # Display YTD table
+                    ytd_display = category_ytd.copy()
+                    ytd_display['Total'] = ytd_display['Total'].apply(lambda x: f"${x:.2f}")
+                    ytd_display['Average'] = ytd_display['Average'].apply(lambda x: f"${x:.2f}")
+                    ytd_display['Percentage'] = ytd_display['Percentage'].apply(lambda x: f"{x:.1f}%")
+                    
+                    st.dataframe(
+                        ytd_display,
+                        use_container_width=True,
+                        column_config={
+                            "Total": "Total Spent",
+                            "Count": "Items Count",
+                            "Average": "Avg Price",
+                            "Percentage": "% of Total"
+                        }
+                    )
+                    
+                    # Monthly trend
+                    st.markdown(f"#### 📈 {selected_year} Monthly Grocery Spending")
+                    
+                    monthly_spending = ytd_df.groupby(ytd_df['date'].dt.month)['price'].sum()
+                    month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+                    
+                    # Create monthly chart
+                    fig = go.Figure()
+                    
+                    fig.add_trace(go.Bar(
+                        x=[month_names[m-1] for m in monthly_spending.index],
+                        y=monthly_spending.values,
+                        marker_color='lightgreen',
+                        hovertemplate="<b>%{x}</b><br>Spent: $%{y:.2f}<extra></extra>"
+                    ))
+                    
+                    fig.update_layout(
+                        title=f"{selected_year} Monthly Grocery Spending",
+                        xaxis_title="Month",
+                        yaxis_title="Amount Spent ($)",
+                        height=400,
+                        template='plotly_white'
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Top items
+                    st.markdown(f"#### 🏆 {selected_year} Top Grocery Items")
+                    
+                    top_items = ytd_df.nlargest(10, 'price')[['item_name', 'category', 'price', 'date', 'store']]
+                    top_items['date'] = top_items['date'].dt.strftime('%Y-%m-%d')
+                    top_items['price'] = top_items['price'].apply(lambda x: f"${x:.2f}")
+                    top_items.columns = ['Item', 'Category', 'Price', 'Date', 'Store']
+                    
+                    st.dataframe(
+                        top_items,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                
+                else:
+                    st.info(f"📝 No grocery data found for {selected_year}.")
+            
+            else:
+                st.info("📝 No grocery items added yet. Upload receipts or add items manually to see YTD analysis.")
+    
     def setup_sms_notifications(self):
         """Setup SMS notification preferences in sidebar."""
         st.sidebar.markdown("---")
@@ -2191,8 +2719,9 @@ def main():
     2. **Filter Data**: Use interactive filters below to focus analysis
     3. **Explore Charts**: All visualizations are interactive with zoom/pan
     4. **Add Subscriptions**: Manually enter your recurring payments
-    5. **Setup SMS Alerts**: Get notified 1 day before payments are due
-    6. **Download Reports**: Generate PDF or Excel summaries
+    5. **Track Groceries**: Upload receipt photos or enter items manually
+    6. **Setup SMS Alerts**: Get notified 1 day before payments are due
+    7. **Download Reports**: Generate PDF or Excel summaries
     
     **📋 Manual Subscription Management:**
     - ✏️ **Add Services**: Enter subscription/utility details manually
@@ -2201,6 +2730,16 @@ def main():
     - 🔄 **Auto-Calculate**: Next due dates calculated automatically
     - 🗑️ **Remove/Edit**: Manage your subscription list easily
     - 📊 **Track Totals**: See total monthly commitments
+    
+    **🛒 Grocery Receipt Tracking:**
+    - 📱 **Mobile Upload**: Take photos of receipts with your phone
+    - 🔍 **OCR Scanning**: Automatic text extraction from receipt images
+    - 🏷️ **Auto-Categorize**: Smart categorization (Snacks, Milk, Vegetables, etc.)
+    - ✏️ **Manual Entry**: Add items manually if OCR doesn't work perfectly
+    - 📊 **Category Tracking**: See spending by Snacks, Dairy & Milk, Vegetables, etc.
+    - 📈 **YTD Analysis**: Year-to-date spending breakdown by grocery category
+    - 🛍️ **Trip Analysis**: Track spending per grocery store visit
+    - 🏆 **Top Items**: See your most expensive grocery purchases
     
     **📱 SMS Payment Alerts:**
     - 🔔 **1-Day Reminders**: Get SMS alerts 1 day before due date
@@ -2374,6 +2913,12 @@ def main():
                 
                 # Manage manual subscriptions
                 subscriptions = analyzer.manage_manual_subscriptions()
+                
+                # Grocery Receipt Tracking Section
+                st.markdown('<div class="chart-header">🛒 Grocery Receipt Tracking</div>', unsafe_allow_html=True)
+                
+                # Manage grocery receipts
+                analyzer.manage_grocery_receipts()
                 
                 # SMS Notification Dashboard
                 st.markdown('<div class="chart-header">📱 SMS Payment Alerts</div>', unsafe_allow_html=True)
