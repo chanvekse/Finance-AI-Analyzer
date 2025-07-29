@@ -287,30 +287,40 @@ class StreamlitBankAnalyzer:
         except Exception as e:
             st.error(f"Error saving settings: {e}")
     
+    def get_user_filename(self, filename):
+        """Get user-specific filename for data storage."""
+        current_user = st.session_state.get('current_user', 'default')
+        if current_user != 'default':
+            base_name = filename.replace('.json', '')
+            return f"{current_user}_{base_name}.json"
+        return filename
+    
     def save_to_file(self, filename, data):
-        """Save data to JSON file."""
+        """Save data to user-specific JSON file."""
         if not self.get_persistence_enabled():
             return
         
-        filepath = self.data_dir / filename
+        user_filename = self.get_user_filename(filename)
+        filepath = self.data_dir / user_filename
         try:
             with open(filepath, 'w') as f:
                 json.dump(data, f, indent=2, default=str)
         except Exception as e:
-            st.error(f"Error saving {filename}: {e}")
+            st.error(f"Error saving {user_filename}: {e}")
     
     def load_from_file(self, filename, default=None):
-        """Load data from JSON file."""
+        """Load data from user-specific JSON file."""
         if not self.get_persistence_enabled():
             return default if default is not None else []
         
-        filepath = self.data_dir / filename
+        user_filename = self.get_user_filename(filename)
+        filepath = self.data_dir / user_filename
         if filepath.exists():
             try:
                 with open(filepath, 'r') as f:
                     return json.load(f)
             except Exception as e:
-                st.error(f"Error loading {filename}: {e}")
+                st.error(f"Error loading {user_filename}: {e}")
                 return default if default is not None else []
         return default if default is not None else []
     
@@ -420,20 +430,22 @@ class StreamlitBankAnalyzer:
             self.save_to_file("grocery_items.json", grocery_items)
     
     def clear_all_saved_data(self):
-        """Clear all saved data files and session state."""
+        """Clear all saved data files and session state for current user."""
         # Clear session state
         for key in ['manual_expenses', 'manual_subscriptions', 'grocery_items']:
             if key in st.session_state:
                 st.session_state[key] = []
         
-        # Clear files
+        # Clear user-specific files
+        current_user = st.session_state.get('current_user', 'default')
         for filename in ["manual_expenses.json", "manual_subscriptions.json", "grocery_items.json"]:
-            filepath = self.data_dir / filename
+            user_filename = self.get_user_filename(filename)
+            filepath = self.data_dir / user_filename
             if filepath.exists():
                 try:
                     filepath.unlink()
                 except Exception as e:
-                    st.error(f"Error deleting {filename}: {e}")
+                    st.error(f"Error deleting {user_filename}: {e}")
     
     def process_dataframe(self, df):
         """Process the uploaded DataFrame and combine with manual entries."""
@@ -2666,18 +2678,75 @@ class StreamlitBankAnalyzer:
         return upcoming_payments
     
     def initialize_users(self):
-        """Initialize default users if not exists."""
-        if 'users' not in st.session_state:
-            # Create default admin user
+        """Initialize default users and load from persistent storage."""
+        # Load users from file if they exist
+        users_data = self.load_users_from_file()
+        
+        if not users_data:
+            # Create default users if file doesn't exist
             admin_password = bcrypt.hashpw("admin123".encode('utf-8'), bcrypt.gensalt())
-            st.session_state.users = {
+            test_password = bcrypt.hashpw("test123".encode('utf-8'), bcrypt.gensalt())
+            
+            users_data = {
                 'admin': {
-                    'password_hash': admin_password,
+                    'password_hash': admin_password.decode('utf-8'),
                     'role': 'admin',
-                    'created_at': datetime.now(),
+                    'created_at': datetime.now().isoformat(),
                     'permissions': ['read', 'write', 'admin']
+                },
+                'test': {
+                    'password_hash': test_password.decode('utf-8'),
+                    'role': 'user',
+                    'created_at': datetime.now().isoformat(),
+                    'permissions': ['read', 'write'],
+                    'is_test_user': True
                 }
             }
+            self.save_users_to_file(users_data)
+        
+        # Convert password hashes back to bytes for session state
+        for username, user_info in users_data.items():
+            if isinstance(user_info['password_hash'], str):
+                user_info['password_hash'] = user_info['password_hash'].encode('utf-8')
+            if isinstance(user_info['created_at'], str):
+                user_info['created_at'] = datetime.fromisoformat(user_info['created_at'])
+        
+        st.session_state.users = users_data
+    
+    def load_users_from_file(self):
+        """Load users from persistent file storage."""
+        users_file = self.data_dir / "users.json"
+        if users_file.exists():
+            try:
+                with open(users_file, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                st.error(f"Error loading users: {e}")
+                return {}
+        return {}
+    
+    def save_users_to_file(self, users_data=None):
+        """Save users to persistent file storage."""
+        if users_data is None:
+            users_data = st.session_state.get('users', {})
+        
+        # Convert data for JSON serialization
+        serializable_users = {}
+        for username, user_info in users_data.items():
+            serializable_users[username] = {
+                'password_hash': user_info['password_hash'].decode('utf-8') if isinstance(user_info['password_hash'], bytes) else user_info['password_hash'],
+                'role': user_info['role'],
+                'created_at': user_info['created_at'].isoformat() if isinstance(user_info['created_at'], datetime) else user_info['created_at'],
+                'permissions': user_info['permissions'],
+                'is_test_user': user_info.get('is_test_user', False)
+            }
+        
+        users_file = self.data_dir / "users.json"
+        try:
+            with open(users_file, 'w') as f:
+                json.dump(serializable_users, f, indent=2)
+        except Exception as e:
+            st.error(f"Error saving users: {e}")
     
     def authenticate_user(self, username, password):
         """Authenticate user credentials."""
@@ -2687,12 +2756,14 @@ class StreamlitBankAnalyzer:
         users = st.session_state.users
         if username in users:
             stored_hash = users[username]['password_hash']
+            if isinstance(stored_hash, str):
+                stored_hash = stored_hash.encode('utf-8')
             if bcrypt.checkpw(password.encode('utf-8'), stored_hash):
                 return True
         return False
     
     def create_user(self, username, password, role='user', permissions=None):
-        """Create a new user."""
+        """Create a new user and save to persistent storage."""
         if 'users' not in st.session_state:
             self.initialize_users()
         
@@ -2705,8 +2776,12 @@ class StreamlitBankAnalyzer:
             'password_hash': password_hash,
             'role': role,
             'created_at': datetime.now(),
-            'permissions': permissions
+            'permissions': permissions,
+            'is_test_user': False
         }
+        
+        # Save to persistent storage
+        self.save_users_to_file()
         
         return True
     
@@ -2739,16 +2814,24 @@ class StreamlitBankAnalyzer:
                     st.error("❌ Invalid username or password")
         
         # Default credentials info
-        with st.expander("📋 Default Credentials", expanded=False):
+        with st.expander("📋 Available Login Credentials", expanded=False):
             st.markdown("""
-            **Default Admin Credentials:**
+            **👑 Admin Account (Persistent):**
             - Username: `admin`
             - Password: `admin123`
+            - Role: Full access, user management
             
-            **⚠️ Important Security Notes:**
-            - Change the default password after first login
-            - Create additional users with limited permissions
-            - Keep your credentials secure
+            **🧪 Test Account (Clears on logout):**
+            - Username: `test`
+            - Password: `test123`
+            - Role: Regular user, data clears on logout
+            - Perfect for testing features!
+            
+            **⚠️ Security Notes:**
+            - Admin credentials persist permanently
+            - Test user data is automatically cleared on logout
+            - Create additional users for team members
+            - Change default passwords for production use
             """)
         
         return False
@@ -2808,23 +2891,48 @@ class StreamlitBankAnalyzer:
         with st.expander("🗑️ Delete User"):
             user_to_delete = st.selectbox(
                 "Select user to delete",
-                options=[u for u in users.keys() if u != 'admin'],
-                help="Cannot delete admin user"
+                options=[u for u in users.keys() if u not in ['admin', 'test']],
+                help="Cannot delete admin or test users"
             )
             
             if st.button("🗑️ Delete User", type="secondary"):
-                if user_to_delete and user_to_delete != 'admin':
+                if user_to_delete and user_to_delete not in ['admin', 'test']:
                     del st.session_state.users[user_to_delete]
+                    self.save_users_to_file()  # Save changes
                     st.success(f"✅ User '{user_to_delete}' deleted!")
                     st.rerun()
     
     def logout(self):
-        """Logout current user."""
+        """Logout current user and handle test user data clearing."""
         if st.sidebar.button("🚪 Logout"):
+            # Check if current user is test user and clear their data
+            current_user = st.session_state.get('current_user')
+            if current_user == 'test':
+                self.clear_test_user_data()
+                st.sidebar.success("🧹 Test user data cleared!")
+            
+            # Clear session authentication
             for key in ['authenticated', 'current_user', 'user_role', 'user_permissions']:
                 if key in st.session_state:
                     del st.session_state[key]
             st.rerun()
+    
+    def clear_test_user_data(self):
+        """Clear all data for test user."""
+        # Clear session state data
+        for key in ['manual_expenses', 'manual_subscriptions', 'grocery_items']:
+            if key in st.session_state:
+                st.session_state[key] = []
+        
+        # Clear test user's files if they exist
+        test_files = ["manual_expenses.json", "manual_subscriptions.json", "grocery_items.json"]
+        for filename in test_files:
+            filepath = self.data_dir / f"test_{filename}"
+            if filepath.exists():
+                try:
+                    filepath.unlink()
+                except Exception as e:
+                    pass  # Ignore errors when clearing test data
     
     def create_notification_dashboard(self, sms_config):
         """Create a dashboard showing upcoming payments and notification status for manual subscriptions."""
